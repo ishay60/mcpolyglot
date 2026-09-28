@@ -16,6 +16,7 @@ import {
 import { defaultSecurityHooks } from '@mcpolyglot/security';
 import {
   MysqlDialect,
+  narrowPolicy,
   PolicySchema,
   PostgresDialect,
   SqlConnector,
@@ -127,7 +128,17 @@ async function buildAgents(cfg: McpolyglotConfig, shared: Connector[]): Promise<
       } else if (src.kind === 'mongo' || src.kind === 'openapi') {
         throw new ConfigError(`Agent "${a.id}": policy is only supported on SQL sources`);
       } else {
-        connectors.push(await buildConnector({ ...src, policy: override.policy }));
+        // An agent's policy can only narrow the source's, never widen it.
+        const agentPolicy = PolicySchema.safeParse(override.policy);
+        if (!agentPolicy.success) {
+          throw new ConfigError(
+            `Invalid policy for agent "${a.id}" on "${srcId}": ${agentPolicy.error.message}`,
+          );
+        }
+        const base = sqlPolicy(src) ?? PolicySchema.parse({});
+        connectors.push(
+          await buildConnector({ ...src, policy: narrowPolicy(base, agentPolicy.data) }),
+        );
       }
     }
     out.push({ id: a.id, scopes: agentScopes(a, sources), connectors });

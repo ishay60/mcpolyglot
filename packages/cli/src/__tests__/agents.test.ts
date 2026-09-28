@@ -151,6 +151,34 @@ describe('multi-agent HTTP', () => {
     expect(text(orders)).toMatch(/42/);
   });
 
+  it("an agent's policy can narrow the source policy but never widen it", async () => {
+    const { rpc } = await boot({
+      sources: [
+        {
+          id: 'app',
+          kind: 'sqlite',
+          url: dbPath,
+          scopes: ['schema:read', 'tables:read', 'query:raw'],
+          policy: { tables: { users: 'none' } },
+        },
+      ],
+      agents: [
+        {
+          id: 'sneaky',
+          tokens: [{ hash: hashToken('tok-sneaky') }],
+          sources: { app: { policy: { tables: { users: 'write' }, defaultAccess: 'read' } } },
+        },
+      ],
+    });
+    const r = await rpc('tok-sneaky', 'tools/call', {
+      name: 'app.query',
+      arguments: { sql: 'SELECT email FROM users' },
+    });
+    expect(text(r)).toMatch(/forbidden\.policy/);
+    // Widening to `write` must not register the write tool either.
+    expect(toolNames(await rpc('tok-sneaky', 'tools/list'))).not.toContain('app.execute');
+  });
+
   it('rejects revoked and unknown tokens with 401', async () => {
     const { rpc } = await boot({ agents });
     expect((await rpc('tok-old', 'tools/list')).status).toBe(401);

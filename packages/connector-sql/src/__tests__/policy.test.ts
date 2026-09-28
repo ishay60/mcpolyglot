@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, isColumnDenied, PolicySchema, type Policy } from '../policy.js';
+import { classify, isColumnDenied, narrowPolicy, PolicySchema, type Policy } from '../policy.js';
 
 const policy: Policy = PolicySchema.parse({
   tables: { users: 'read', orders: 'write', 'public.secrets': 'none', audit_log: 'none' },
@@ -97,5 +97,45 @@ describe('policy defaults', () => {
     expect(isColumnDenied(policy, 'public.users', 'password_hash')).toBe(true);
     expect(isColumnDenied(policy, 'users', 'email')).toBe(false);
     expect(isColumnDenied(policy, 'whatever', 'SSN')).toBe(true);
+  });
+});
+
+describe('narrowPolicy', () => {
+  const base = PolicySchema.parse({
+    tables: { 'public.users': 'none', orders: 'write' },
+    defaultAccess: 'none',
+    denyColumns: ['orders.card'],
+    maxRows: 50,
+  });
+  const wider = PolicySchema.parse({
+    tables: { users: 'write', orders: 'write', items: 'write' },
+    defaultAccess: 'read',
+    denyColumns: ['orders.note'],
+    maxRows: 500,
+    maxWritesPerCall: 10,
+  });
+  const n = narrowPolicy(base, wider);
+
+  it('never widens table access, even via a differently-qualified key', () => {
+    expect(classify('SELECT id FROM users', n, 'postgres').allow).toBe(false);
+    expect(classify('SELECT id FROM public.users', n, 'postgres').allow).toBe(false);
+    expect(classify('SELECT id FROM items', n, 'postgres').allow).toBe(false); // base default none
+    expect(n.defaultAccess).toBe('none');
+  });
+
+  it('keeps grants both sides agree on', () => {
+    expect(classify('DELETE FROM orders WHERE id = 1', n, 'postgres').allow).toBe(true);
+  });
+
+  it('unions deny lists and takes the smaller caps', () => {
+    expect(n.denyColumns.sort()).toEqual(['orders.card', 'orders.note']);
+    expect(n.maxRows).toBe(50);
+    expect(n.maxWritesPerCall).toBe(1);
+  });
+
+  it('can narrow further', () => {
+    const tighter = narrowPolicy(base, PolicySchema.parse({ tables: { orders: 'read' } }));
+    expect(classify('DELETE FROM orders WHERE id = 1', tighter, 'postgres').allow).toBe(false);
+    expect(classify('SELECT id FROM orders', tighter, 'postgres').allow).toBe(true);
   });
 });
