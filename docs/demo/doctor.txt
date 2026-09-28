@@ -13,7 +13,7 @@ $ mcpolyglot doctor --config ./mcpolyglot.config.json
 
   Sources
   ───────
-   OK   sqlite.demo  sql · 1 ms
+   OK   sqlite.demo  sql · 0 ms
   • tools  3 registered
       • sqlite.demo.list_tables  [schema:read]
       • sqlite.demo.describe_table  [schema:read]

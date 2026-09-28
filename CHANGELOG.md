@@ -19,6 +19,7 @@ How releases work in this repo:
 - `@mcpolyglot/core` — OAuth mode for the Streamable HTTP transport: JWTs verified against the issuer's JWKS (`iss`, `aud`, `exp`/`nbf`) (#28).
 - `@mcpolyglot/cli` — redesigned terminal UI; Zod 4 and `@clack/prompts` 1.x (#26).
 - Node.js ≥ 22 is now required (#19).
+- Policy rejections return as readable tool errors (`forbidden.read_only`, …) instead of `-32603`; denied column names no longer leak via `columns`.
 
 ## 0.1.0 — 2026-04-26
 

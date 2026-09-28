@@ -98,6 +98,11 @@ export class Redactor {
             redactions += 1;
             continue;
           }
+          // Query results list column names alongside rows; don't leak a denied column's name.
+          if (k === 'columns' && Array.isArray(val)) {
+            out[k] = val.filter((c) => typeof c !== 'string' || !this.isDenied(c.toLowerCase(), c));
+            continue;
+          }
           out[k] = visit(val, [...path, k]);
         }
         return out;
