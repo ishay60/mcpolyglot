@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server as HttpServer } from 'node:http';
 import { AddressInfo } from 'node:net';
-import { exportJWK, generateKeyPair, SignJWT, type JWK, type KeyLike } from 'jose';
+import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose';
 import { createOAuthVerifier } from '../transports/oauth.js';
 
 interface TestKey {
-  privateKey: KeyLike;
+  privateKey: CryptoKey;
   publicJwk: JWK;
   kid: string;
 }
