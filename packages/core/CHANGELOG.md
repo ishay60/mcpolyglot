@@ -1,5 +1,33 @@
 # @mcpolyglot/core
 
+## 0.2.0
+
+### Minor Changes
+
+- b98aaf6: Refresh CLI UI in a Copilot-CLI flavor and bump zod to v4.
+
+  - New UI primitives in `@mcpolyglot/cli`: a boxed `headerBar` with a sub-command pill, pill-chip status indicators (`[ OK ]`, `[ ERR ]`, `[ READY ]`), section dividers, a `panel` for "next steps" callouts, a `footerBar` for hints, and a `step(n/total)` indicator for the `init` wizard.
+  - `doctor`, `serve`, `tools`, and `init` adopt the new layout. The light `banner` is retained for compatibility.
+  - `@mcpolyglot/core` now uses zod v4's built-in `z.toJSONSchema()` instead of the `zod-to-json-schema` package, dropping one dep.
+  - `@mcpolyglot/config`, `@mcpolyglot/connector-sql`, and `@mcpolyglot/connector-mongo` upgraded to zod 4. `ZodTypeAny` was replaced with a permissive `AnyZodSchema` alias in core so existing connector handlers keep working without explicit generic annotations.
+  - `@mcpolyglot/cli` upgraded `@clack/prompts` to v1 (validate signatures now allow `undefined`).
+
+- 6f8b1d2: Wire OAuth (JWT + JWKS) verification into the Streamable HTTP transport.
+
+  When `auth.type: 'oauth'` is set in the config, the transport now verifies bearer JWTs against the configured issuer/audience and a remote JWKS (cached + rotated by `jose`). The default JWKS path is `${issuer}/.well-known/jwks.json`, matching the convention used by Auth0, Okta, Keycloak, Cognito, and most OIDC providers.
+
+  - New module: `@mcpolyglot/core` exposes `createOAuthVerifier({ issuer, audience, jwksUri? })` from `@mcpolyglot/core/transports/streamable-http`.
+  - `StreamableHttpTransport` now accepts a discriminated `auth: { kind: 'bearer' | 'oauth', ... }` option. The legacy `bearerToken` field is preserved for back-compat.
+  - 401 responses include an RFC 6750 `WWW-Authenticate` challenge with `error="invalid_token"` and an `error_description` mapped from a small, stable set of reasons (`token_expired`, `signature_invalid`, `claim_validation_failed`, `unknown_key`, `invalid_token`).
+  - `mcpolyglot serve` now renders `Auth: oauth · <issuer>` and `Audience: <aud>` instead of the bearer token line when running in OAuth mode.
+  - `examples/http/README.md` documents the OAuth setup with a curl + client-credentials walkthrough.
+
+  Adds `jose` (^5.9.6) as a direct dependency of `@mcpolyglot/core`.
+
+### Patch Changes
+
+- e7251dd: Policy rejections (`forbidden.*`, `rate_limited`, `timeout`) now return as MCP tool errors (`isError: true`, message prefixed with the code) instead of a generic `-32603` internal error. Postgres read-only violations (SQLSTATE 25006) map to `forbidden.read_only`. Denied columns are now also removed from a query result's `columns` list, not just from rows.
+
 ## 0.1.0
 
 ### Minor Changes

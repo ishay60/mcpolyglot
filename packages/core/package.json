@@ -1,6 +1,6 @@
 {
   "name": "@mcpolyglot/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Core runtime for mcpolyglot: Connector interface, server, transports, and the non-bypassable security pipeline.",
   "license": "MIT",
   "repository": {
