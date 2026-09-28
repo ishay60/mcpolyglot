@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: owner
+      POSTGRES_PASSWORD: owner-dev-only
+      POSTGRES_DB: bank
+    volumes:
+      - ./seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U owner -d bank']
+      interval: 2s
+      retries: 30
+
+  mcpolyglot:
+    build: ../..
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # agent_ro only has SELECT (see seed.sql): a second wall behind the policy.
+      DATABASE_URL: postgres://agent_ro:agent-ro-dev-only@postgres:5432/bank
+      MCPOLYGLOT_TOKEN: ${MCPOLYGLOT_TOKEN:-change-me-dev-token}
+    volumes:
+      - ./mcpolyglot.config.json:/config/mcpolyglot.config.json:ro
+    ports:
+      - '127.0.0.1:7337:7337'
