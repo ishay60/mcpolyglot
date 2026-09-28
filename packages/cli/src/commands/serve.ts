@@ -2,7 +2,7 @@ import { register } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { extname, basename } from 'node:path';
 import pc from 'picocolors';
-import { loadConfig, type McpolyglotConfig } from '@mcpolyglot/config';
+import { loadConfig, resolveSecrets, type McpolyglotConfig } from '@mcpolyglot/config';
 import { ConfigError } from '@mcpolyglot/core';
 import { StdioTransport } from '@mcpolyglot/core/transports/stdio';
 import { StreamableHttpTransport } from '@mcpolyglot/core/transports/streamable-http';
@@ -74,7 +74,10 @@ export async function serveCommand(opts: ServeOptions): Promise<void> {
               audience: httpAuth.audience,
               ...(httpAuth.jwksUri ? { jwksUri: httpAuth.jwksUri } : {}),
             }
-          : { kind: 'bearer', ...(httpAuth.token ? { token: httpAuth.token } : {}) },
+          : {
+              kind: 'bearer',
+              ...(httpAuth.token ? { token: await resolveSecrets(httpAuth.token) } : {}),
+            },
     });
     transport = httpTransport;
     kv('Mode', pc.cyan('streamable-http'));
@@ -86,7 +89,13 @@ export async function serveCommand(opts: ServeOptions): Promise<void> {
       kv('Auth', pc.cyan(`oauth · ${httpAuth.issuer}`));
       kv('Audience', pc.dim(httpAuth.audience));
     } else if (httpTransport.bearerToken) {
-      kv('Token', pc.yellow(httpTransport.bearerToken));
+      // Only echo a generated token; a configured one would leak into container logs.
+      kv(
+        'Token',
+        'token' in httpAuth && httpAuth.token
+          ? pc.dim('from config')
+          : pc.yellow(httpTransport.bearerToken),
+      );
     }
     kv('Config', pc.dim(basename(opts.config)));
   } else {

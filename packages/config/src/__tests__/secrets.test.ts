@@ -31,6 +31,16 @@ describe('looksLikeLiteralCredential', () => {
     expect(looksLikeLiteralCredential('${env:DATABASE_URL}')).toBe(false);
   });
 
+  it('does not break a later resolveSecrets of the same ref (doctor calls both)', async () => {
+    process.env.MCPOLYGLOT_TEST_VAR = 'resolved';
+    try {
+      looksLikeLiteralCredential('${env:MCPOLYGLOT_TEST_VAR}');
+      expect(await resolveSecrets('${env:MCPOLYGLOT_TEST_VAR}')).toBe('resolved');
+    } finally {
+      delete process.env.MCPOLYGLOT_TEST_VAR;
+    }
+  });
+
   it('does not flag a path-only sqlite URL', () => {
     expect(looksLikeLiteralCredential('./data.db')).toBe(false);
   });
