@@ -1,5 +1,22 @@
 # @mcpolyglot/connector-sql
 
+## 0.3.0
+
+### Minor Changes
+
+- 03059f1: SQL classifier hardening. Whole-row references (`SELECT u FROM users u`, `to_jsonb(u)`, `json_agg(u)`, `u::text`) are now checked against `denyColumns`, and denied keys are stripped from JSON/record values in query results as a second layer. `SELECT ... INTO`, server-access functions (`pg_read_file`, `pg_ls_dir`, `lo_import`, `dblink*`, `pg_sleep`, `LOAD_FILE`, `SLEEP`, `load_extension`, ...), system catalogs, and `UPDATE`/`DELETE` whose `WHERE` names no column are denied. `mcpolyglot doctor` fails when the database user is a superuser or holds server file privileges.
+- 24d8fa2: SQL sources open a DB-level read-only connection unless the policy grants a `write` table. New `<id>.execute` tool (scope `tables:write`, only registered with a `write` table): one INSERT/UPDATE/DELETE per call in a transaction, rolled back above `maxWritesPerCall`, with `dryRun` and an optional `idempotencyKey` (policy `idempotencyWindowMinutes`, default 10). New per-source `pool: { max, idleTimeoutMs }` and `maxConcurrentQueries` (over-cap calls are rejected with `rate_limited`). `SqlDialect` gains `runWrite` and `connect({ writable })`.
+- 54d6b1b: Policy layer for SQL sources (per-table access, column denies, row/timeout caps, dry-run; DDL and unscoped UPDATE/DELETE always blocked). Audit entries gain `agentId`, `decision`, and `reason`; audit sinks are now console (default), file, and webhook. **Behavior change:** the audit log no longer goes to `~/.mcpolyglot/audit.log` unless `audit.path` is set.
+
+  **Fixes:** the per-call timeout now cuts off handlers that ignore the abort signal (previously a hung MySQL/SQLite call never returned), and the concurrency cap now releases its slot when a call finishes (previously slots were held for 30s, so quick sequential calls hit "too many concurrent calls").
+
+### Patch Changes
+
+- Updated dependencies [24d8fa2]
+- Updated dependencies [24d8fa2]
+- Updated dependencies [54d6b1b]
+  - @mcpolyglot/core@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,23 @@
 # @mcpolyglot/core
 
+## 0.3.0
+
+### Minor Changes
+
+- 24d8fa2: Per-agent HTTP auth: `agents: [{ id, tokens: [{ hash, revoked? }], scopes?, sources: { [id]: { policy? } } }]`. Tokens are stored as sha256 hashes and matched in constant time; the authenticated agent sees only its sources' tools that its scopes cover, gets its own policy per source, its own rate-limit bucket, and is the audit `agentId`. New `mcpolyglot token create|hash`; `doctor` lists each agent's tools. Without `agents` nothing changes.
+
+  **Fix:** the HTTP transport now serves more than one request per process (SDK 1.30 forbids reusing a stateless transport; every request after the first returned 500). **Breaking for custom transports:** `Transport.start` now receives a `() => Server` factory instead of a `Server`. Under HTTP, `clientInfo.name` no longer labels audit entries (each request has its own protocol server); use the header or `agents`.
+
+- 54d6b1b: Policy layer for SQL sources (per-table access, column denies, row/timeout caps, dry-run; DDL and unscoped UPDATE/DELETE always blocked). Audit entries gain `agentId`, `decision`, and `reason`; audit sinks are now console (default), file, and webhook. **Behavior change:** the audit log no longer goes to `~/.mcpolyglot/audit.log` unless `audit.path` is set.
+
+  **Fixes:** the per-call timeout now cuts off handlers that ignore the abort signal (previously a hung MySQL/SQLite call never returned), and the concurrency cap now releases its slot when a call finishes (previously slots were held for 30s, so quick sequential calls hit "too many concurrent calls").
+
+### Patch Changes
+
+- 24d8fa2: `mcpolyglot init <url>` introspects a database and writes a config with a read-only policy: every table `read`, `defaultAccess: 'none'`, and suggested `denyColumns` from column names. `mcpolyglot doctor` now validates each SQL policy against the live schema (unknown tables and columns are errors) and lists readable, writable, and hidden tables and columns. New `@mcpolyglot/client` package: typed `listTables` / `query` over HTTP with policy denials as `McpolyglotDeniedError`. A root `Dockerfile` and `examples/docker-compose` ship too.
+
+  **Fixes:** the Streamable HTTP transport answered only the first request; every later one returned 500. It now builds a fresh MCP server and transport per request. `doctor` no longer fails to connect when a source URL is a `${env:...}` reference: the credential check left a global regex's `lastIndex` set, so the URL was never resolved. `serve --http` no longer prints a bearer token that came from config.
+
 ## 0.2.0
 
 ### Minor Changes

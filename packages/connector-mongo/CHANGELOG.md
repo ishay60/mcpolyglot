@@ -1,5 +1,18 @@
 # @mcpolyglot/connector-mongo
 
+## 0.2.1
+
+### Patch Changes
+
+- 54d6b1b: Policy layer for SQL sources (per-table access, column denies, row/timeout caps, dry-run; DDL and unscoped UPDATE/DELETE always blocked). Audit entries gain `agentId`, `decision`, and `reason`; audit sinks are now console (default), file, and webhook. **Behavior change:** the audit log no longer goes to `~/.mcpolyglot/audit.log` unless `audit.path` is set.
+
+  **Fixes:** the per-call timeout now cuts off handlers that ignore the abort signal (previously a hung MySQL/SQLite call never returned), and the concurrency cap now releases its slot when a call finishes (previously slots were held for 30s, so quick sequential calls hit "too many concurrent calls").
+
+- Updated dependencies [24d8fa2]
+- Updated dependencies [24d8fa2]
+- Updated dependencies [54d6b1b]
+  - @mcpolyglot/core@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
