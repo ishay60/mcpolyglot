@@ -37,42 +37,48 @@ These are enforced by the server, not requested of the model. Every tool call ru
 
 If a guardrail is claimed here or in the README, a test fails when it stops being true. CI runs all of them against real Postgres 16, MySQL 8.4 and SQLite, and fails if any test is skipped.
 
-| Claim                                                                                           | Test                                                                                         |
-| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| DDL, multi-statement, unparseable SQL always denied; `UPDATE`/`DELETE` need `WHERE`             | `packages/connector-sql/src/__tests__/policy.test.ts`                                        |
-| Per-table `read`/`write`/`none`, most-restrictive match, no default write                       | `policy.test.ts`                                                                             |
-| Denied columns blocked in any position and hidden from `list_tables`                            | `policy.test.ts`, `dialects.integration.test.ts`, `sqlite.integration.test.ts`               |
-| DB-level read-only catches a write the policy allowed                                           | `dialects.integration.test.ts` (Postgres, MySQL), `sqlite.integration.test.ts`               |
-| Dry-run never executes                                                                          | `sqlite.integration.test.ts`                                                                 |
-| No write tables: connection refuses a raw write that bypasses the tools                         | `dialects.integration.test.ts` (Postgres, MySQL), `sqlite.integration.test.ts`               |
-| `execute` registered only with a `write` table                                                  | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
-| `execute` over `maxWritesPerCall` rolls back                                                    | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
-| Idempotent replay doesn't re-execute; key reuse with other args errors                          | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
-| `maxConcurrentQueries` rejects with `rate_limited`                                              | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
-| Mongo `$out` / `$merge` rejected                                                                | `packages/connector-mongo/src/__tests__/aggregate-gate.test.ts`                              |
-| Scope check runs before the handler                                                             | `packages/core/src/__tests__/pipeline.test.ts`                                               |
-| Per-call timeout cuts off a hung handler                                                        | `pipeline.test.ts`, and the DB-side timeout in `dialects.integration.test.ts`                |
-| Rate limit and concurrency cap; slot released on every outcome                                  | `packages/security/src/__tests__/rate-limiter.test.ts`, `pipeline.test.ts`                   |
-| Row cap and byte cap truncate and flag                                                          | `sqlite.integration.test.ts`, `dialects.integration.test.ts`, `wrap.test.ts`                 |
-| Each built-in redaction pattern                                                                 | `redactor.test.ts`                                                                           |
-| Results wrapped as untrusted data                                                               | `wrap.test.ts`                                                                               |
-| Audit: every call, allow/deny/error, agent id, no raw args or rows, scrubbed text               | `pipeline.test.ts`, `packages/security/src/__tests__/audit.test.ts`                          |
-| Every row of the `examples/*/README.md` tables (read-only analytics, spend policy, multi-agent) | `packages/cli/src/__tests__/examples.test.ts`                                                |
-| HTTP: bearer required, OAuth `iss`/`aud`/`exp`/key checks, loopback default                     | `streamable-http.test.ts`, `oauth.test.ts`, `packages/config/src/__tests__/defaults.test.ts` |
-| Agent tokens: sha256-hashed, constant-time lookup; revoked/unknown → 401                        | `streamable-http.test.ts`, `packages/cli/src/__tests__/agents.test.ts`                       |
-| Per-agent sources, scopes and policy filter `tools/list` and `tools/call`                       | `agents.test.ts`                                                                             |
-| A per-agent policy only narrows the source policy (never widens tables, writes, caps)           | `policy.test.ts` (`narrowPolicy`), `agents.test.ts`                                          |
-| Audit `agentId` comes from the token, not the `x-mcpolyglot-agent` header                       | `agents.test.ts`                                                                             |
-| Without `agents`, single shared token behavior is unchanged                                     | `agents.test.ts`, `streamable-http.test.ts`                                                  |
-| Literal credentials flagged                                                                     | `secrets.test.ts`                                                                            |
+| Claim                                                                                                                              | Test                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| DDL, multi-statement, unparseable SQL always denied; `UPDATE`/`DELETE` need `WHERE`                                                | `packages/connector-sql/src/__tests__/policy.test.ts`                                        |
+| `SELECT ... INTO`, server-access functions (`pg_read_file`, `LOAD_FILE`, `dblink`, ...), system catalogs denied                    | `policy.test.ts`                                                                             |
+| Whole-row references (`SELECT u FROM users u`, `to_jsonb(u)`, `u::text`) hit `denyColumns`; denied keys stripped from JSON results | `policy.test.ts`                                                                             |
+| Per-table `read`/`write`/`none`, most-restrictive match, no default write                                                          | `policy.test.ts`                                                                             |
+| Denied columns blocked in any position and hidden from `list_tables`                                                               | `policy.test.ts`, `dialects.integration.test.ts`, `sqlite.integration.test.ts`               |
+| DB-level read-only catches a write the policy allowed                                                                              | `dialects.integration.test.ts` (Postgres, MySQL), `sqlite.integration.test.ts`               |
+| Dry-run never executes                                                                                                             | `sqlite.integration.test.ts`                                                                 |
+| No write tables: connection refuses a raw write that bypasses the tools                                                            | `dialects.integration.test.ts` (Postgres, MySQL), `sqlite.integration.test.ts`               |
+| `execute` registered only with a `write` table                                                                                     | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
+| `execute` over `maxWritesPerCall` rolls back                                                                                       | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
+| Idempotent replay doesn't re-execute; key reuse with other args errors                                                             | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
+| `maxConcurrentQueries` rejects with `rate_limited`                                                                                 | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
+| Mongo `$out` / `$merge` rejected                                                                                                   | `packages/connector-mongo/src/__tests__/aggregate-gate.test.ts`                              |
+| Scope check runs before the handler                                                                                                | `packages/core/src/__tests__/pipeline.test.ts`                                               |
+| Per-call timeout cuts off a hung handler                                                                                           | `pipeline.test.ts`, and the DB-side timeout in `dialects.integration.test.ts`                |
+| Rate limit and concurrency cap; slot released on every outcome                                                                     | `packages/security/src/__tests__/rate-limiter.test.ts`, `pipeline.test.ts`                   |
+| Row cap and byte cap truncate and flag                                                                                             | `sqlite.integration.test.ts`, `dialects.integration.test.ts`, `wrap.test.ts`                 |
+| Each built-in redaction pattern                                                                                                    | `redactor.test.ts`                                                                           |
+| Results wrapped as untrusted data                                                                                                  | `wrap.test.ts`                                                                               |
+| Audit: every call, allow/deny/error, agent id, no raw args or rows, scrubbed text                                                  | `pipeline.test.ts`, `packages/security/src/__tests__/audit.test.ts`                          |
+| Every row of the `examples/*/README.md` tables (read-only analytics, spend policy, multi-agent)                                    | `packages/cli/src/__tests__/examples.test.ts`                                                |
+| HTTP: bearer required, OAuth `iss`/`aud`/`exp`/key checks, loopback default                                                        | `streamable-http.test.ts`, `oauth.test.ts`, `packages/config/src/__tests__/defaults.test.ts` |
+| Agent tokens: sha256-hashed, constant-time lookup; revoked/unknown → 401                                                           | `streamable-http.test.ts`, `packages/cli/src/__tests__/agents.test.ts`                       |
+| Per-agent sources, scopes and policy filter `tools/list` and `tools/call`                                                          | `agents.test.ts`                                                                             |
+| A per-agent policy only narrows the source policy (never widens tables, writes, caps)                                              | `policy.test.ts` (`narrowPolicy`), `agents.test.ts`                                          |
+| Audit `agentId` comes from the token, not the `x-mcpolyglot-agent` header                                                          | `agents.test.ts`                                                                             |
+| Without `agents`, single shared token behavior is unchanged                                                                        | `agents.test.ts`, `streamable-http.test.ts`                                                  |
+| Literal credentials flagged                                                                                                        | `secrets.test.ts`                                                                            |
 
 What this does **not** cover: prompt injection can still steer the model into making allowed read calls it shouldn't, and data the agent is allowed to read can leave through the client. Scope the database role and the granted scopes to what the agent actually needs.
+
+The SQL classifier is defense-in-depth, not the control. It parses what the grammar understands and denies what it cannot see, but a parser cannot know every function an extension adds or every way a row can be serialized. The database user's grants are the control: a user without `pg_read_server_files`, `FILE`, superuser, or write grants makes a classifier bypass harmless. `mcpolyglot doctor` fails when the connected user holds any of those.
+
+Idempotency keys and rate-limit counters live in process memory. They do not survive a restart and are not shared between replicas of the HTTP transport. Run one replica per source, or treat `idempotencyKey` as best-effort behind a load balancer.
 
 ## Hardening checklist for self-hosting
 
 - Run `mcpolyglot serve --http` behind a reverse proxy with TLS.
 - Bind to `127.0.0.1` for single-user setups.
-- Use a database role with read-only permissions even though mcpolyglot enforces read-only at the protocol level.
+- Use a database role with read-only permissions even though mcpolyglot enforces read-only at the protocol level. Never a superuser, and never one in `pg_read_server_files` or with MySQL `FILE`; `mcpolyglot doctor` checks this.
 - Enable `tables:write` scope only on isolated dev databases.
 - Ship the audit log somewhere durable (`audit.path` or `audit.webhookUrl`) and review it periodically.
 

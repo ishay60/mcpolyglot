@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classify, isColumnDenied, narrowPolicy, PolicySchema, type Policy } from '../policy.js';
+import { stripDeniedKeys } from '../connector.js';
 
 const policy: Policy = PolicySchema.parse({
   tables: { users: 'read', orders: 'write', 'public.secrets': 'none', audit_log: 'none' },
@@ -33,6 +34,15 @@ const cases: Array<[string, boolean, string]> = [
   ['SELECT u.* FROM users u', false, 'SELECT *'],
   ['SELECT ssn FROM anything', false, '*.ssn'],
   ['SELECT PASSWORD_HASH FROM Users', false, 'password_hash'],
+  // whole-row references return every column, denied ones included, inside one value
+  ['SELECT u FROM users u', false, 'Whole-row'],
+  ['SELECT users FROM users', false, 'Whole-row'],
+  ['SELECT to_jsonb(u) FROM users u', false, 'Whole-row'],
+  ['SELECT json_agg(u) FROM users u', false, 'Whole-row'],
+  ['SELECT u::text FROM users u', false, 'Whole-row'],
+  ['SELECT row_to_json(users) FROM users', false, 'Whole-row'],
+  ['SELECT o FROM orders o', false, '*.ssn'], // `*.col` rule: any whole row could carry it
+  ['SELECT o.id FROM orders o JOIN users u ON u.id = o.user_id', true, 'Allowed'],
 
   // writes
   ['INSERT INTO orders (user_id, total_cents) VALUES (1, 100)', true, 'Allowed'],
@@ -43,6 +53,20 @@ const cases: Array<[string, boolean, string]> = [
   ['INSERT INTO orders (user_id) SELECT id FROM audit_log', false, 'not accessible'],
   ['UPDATE orders SET total_cents = 0', false, 'without a WHERE'],
   ['DELETE FROM orders', false, 'without a WHERE'],
+  ['UPDATE orders SET total_cents = 0 WHERE 1=1', false, 'names no column'],
+  ['DELETE FROM orders WHERE true', false, 'names no column'],
+
+  // server access through functions / INTO / system catalogs
+  ["SELECT pg_read_file('/etc/passwd')", false, 'pg_read_file'],
+  ["SELECT PG_READ_FILE('/etc/passwd')", false, 'pg_read_file'],
+  ["SELECT pg_catalog.pg_read_file('/etc/passwd')", false, 'pg_read_file'],
+  ["SELECT * FROM pg_ls_dir('.')", false, 'pg_ls_dir'],
+  ["SELECT email FROM users WHERE id = (SELECT lo_import('/etc/passwd'))", false, 'lo_import'],
+  ["SELECT dblink_connect('host=x')", false, 'dblink_connect'],
+  ['SELECT pg_sleep(10)', false, 'pg_sleep'],
+  ['SELECT * FROM information_schema.tables', false, 'System table'],
+  ['SELECT * FROM pg_catalog.pg_shadow', false, 'System table'],
+  ['SELECT * FROM pg_shadow', false, 'System table'],
 
   // DDL / admin / multi-statement / garbage
   ['DROP TABLE orders', false, 'always blocked'],
@@ -60,6 +84,33 @@ describe('classify (postgres)', () => {
     const d = classify(sql, policy, 'postgres');
     expect(d.allow, d.reason).toBe(allow);
     expect(d.reason).toContain(reason);
+  });
+});
+
+describe('classify (mysql): file access', () => {
+  it.each([
+    ["SELECT LOAD_FILE('/etc/passwd')", 'load_file'],
+    ["SELECT * FROM orders INTO OUTFILE '/tmp/x'", 'INTO'],
+    ["SELECT id FROM orders INTO DUMPFILE '/tmp/x'", 'INTO'],
+    ['SELECT SLEEP(10)', 'sleep'],
+    ['SELECT * FROM mysql.user', 'System table'],
+  ])('%s denied', (sql, reason) => {
+    const d = classify(sql, policy, 'mysql');
+    expect(d.allow, d.reason).toBe(false);
+    expect(d.reason).toContain(reason);
+  });
+
+  it('a system table can be exposed by listing it explicitly', () => {
+    const p = PolicySchema.parse({ tables: { 'information_schema.tables': 'read' } });
+    expect(classify('SELECT * FROM information_schema.tables', p, 'mysql').allow).toBe(true);
+    expect(classify('SELECT * FROM information_schema.columns', p, 'mysql').allow).toBe(false);
+  });
+});
+
+describe('classify (sqlite): extensions', () => {
+  it('denies load_extension and sqlite_master', () => {
+    expect(classify("SELECT load_extension('x')", policy, 'sqlite').allow).toBe(false);
+    expect(classify('SELECT * FROM sqlite_master', policy, 'sqlite').allow).toBe(false);
   });
 });
 
@@ -137,5 +188,25 @@ describe('narrowPolicy', () => {
     const tighter = narrowPolicy(base, PolicySchema.parse({ tables: { orders: 'read' } }));
     expect(classify('DELETE FROM orders WHERE id = 1', tighter, 'postgres').allow).toBe(false);
     expect(classify('SELECT id FROM orders', tighter, 'postgres').allow).toBe(true);
+  });
+});
+
+describe('stripDeniedKeys (output-side filter)', () => {
+  const denied = new Set(['password_hash', 'ssn']);
+  it('drops denied keys at any depth, in objects and arrays', () => {
+    const rows = [
+      { id: 1, password_hash: 'x', profile: { ssn: '1', name: 'a' } },
+      { agg: [{ id: 2, PASSWORD_HASH: 'y' }, { id: 3 }] },
+    ];
+    expect(stripDeniedKeys(rows, denied)).toEqual([
+      { id: 1, profile: { name: 'a' } },
+      { agg: [{ id: 2 }, { id: 3 }] },
+    ]);
+  });
+  it('leaves scalars, nulls, and class instances alone', () => {
+    const d = new Date(0);
+    expect(stripDeniedKeys([{ at: d, n: null, s: 'ssn' }], denied)).toEqual([
+      { at: d, n: null, s: 'ssn' },
+    ]);
   });
 });

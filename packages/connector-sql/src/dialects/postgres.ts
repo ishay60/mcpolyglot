@@ -50,6 +50,34 @@ export class PostgresDialect implements SqlDialect {
     }
   }
 
+  async auditPrivileges(): Promise<string[]> {
+    const c = await this.requirePool().connect();
+    try {
+      const res = await c.query<{
+        rolsuper: boolean;
+        read_files: boolean;
+        write_files: boolean;
+        exec_program: boolean;
+      }>(`
+        SELECT r.rolsuper,
+               pg_has_role(current_user, 'pg_read_server_files', 'MEMBER')     AS read_files,
+               pg_has_role(current_user, 'pg_write_server_files', 'MEMBER')    AS write_files,
+               pg_has_role(current_user, 'pg_execute_server_program', 'MEMBER') AS exec_program
+        FROM pg_roles r WHERE r.rolname = current_user
+      `);
+      const row = res.rows[0];
+      if (!row) return [];
+      const problems: string[] = [];
+      if (row.rolsuper) problems.push('database user is a superuser; policy cannot be enforced');
+      if (row.read_files) problems.push('database user is in pg_read_server_files (pg_read_file)');
+      if (row.write_files) problems.push('database user is in pg_write_server_files (COPY TO)');
+      if (row.exec_program) problems.push('database user is in pg_execute_server_program');
+      return problems;
+    } finally {
+      c.release();
+    }
+  }
+
   async listTables(): Promise<TableSchema[]> {
     const c = await this.requirePool().connect();
     try {

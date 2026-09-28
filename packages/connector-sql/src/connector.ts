@@ -41,11 +41,25 @@ export class SqlConnector implements Connector {
     { fingerprint: string; expires: number; result: Promise<unknown> }
   >();
 
+  /** Every denied column name, table-agnostic, lowercased. Used for the output-side filter. */
+  private readonly deniedColumnNames: ReadonlySet<string>;
+
   constructor(opts: SqlConnectorOptions) {
     this.id = opts.id;
     this.dialect = opts.dialect;
     this.policy = PolicySchema.parse(opts.policy ?? {});
     this.maxConcurrent = opts.maxConcurrentQueries ?? Infinity;
+    this.deniedColumnNames = new Set(
+      this.policy.denyColumns.map((c) => c.slice(c.lastIndexOf('.') + 1).toLowerCase()),
+    );
+  }
+
+  /**
+   * Privileges the database user holds that would let a query bypass the policy (superuser,
+   * server file access, ...). Empty when the dialect can't tell or nothing is wrong.
+   */
+  async auditPrivileges(): Promise<string[]> {
+    return this.dialect.auditPrivileges ? this.dialect.auditPrivileges() : [];
   }
 
   /** True when the policy grants `write` on at least one table. */
@@ -157,9 +171,21 @@ export class SqlConnector implements Connector {
               signal: ctx.signal,
             }),
           );
+          // Second layer behind the classifier: a denied column that still arrives inside a
+          // record/JSON value (row_to_json, json_agg, a whole-row alias) is dropped here.
+          const filtered = this.deniedColumnNames.size
+            ? {
+                ...result,
+                columns: result.columns.filter((c) => !this.deniedColumnNames.has(c.toLowerCase())),
+                rows: stripDeniedKeys(result.rows, this.deniedColumnNames) as Record<
+                  string,
+                  unknown
+                >[],
+              }
+            : result;
           return {
-            content: [{ type: 'json', data: result }],
-            metadata: { rows: result.rowCount, truncated: result.truncated },
+            content: [{ type: 'json', data: filtered }],
+            metadata: { rows: filtered.rowCount, truncated: filtered.truncated },
           };
         },
       },
@@ -285,6 +311,23 @@ export class SqlConnector implements Connector {
       ];
     });
   }
+}
+
+/**
+ * Recursively remove keys named like a denied column from plain objects and arrays.
+ * Dates, buffers, and other class instances pass through untouched.
+ */
+export function stripDeniedKeys(value: unknown, denied: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) return value.map((v) => stripDeniedKeys(v, denied));
+  if (value === null || typeof value !== 'object') return value;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (denied.has(k.toLowerCase())) continue;
+    out[k] = stripDeniedKeys(v, denied);
+  }
+  return out;
 }
 
 function qualifiedName(t: TableSchema): string {

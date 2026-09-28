@@ -141,7 +141,7 @@ policy: {
 }
 ```
 
-Always denied, whatever the policy says: DDL, `GRANT`, `SET`, more than one statement per call, SQL the parser can't read, and `UPDATE`/`DELETE` without `WHERE`. `dryRun: true` returns the decision without running anything. Full rules: [connector-sql README](./packages/connector-sql/README.md#policy-layer).
+Always denied, whatever the policy says: DDL, `GRANT`, `SET`, more than one statement per call, SQL the parser can't read, `SELECT ... INTO`, server-access functions (`pg_read_file`, `LOAD_FILE`, `dblink`, `pg_sleep`, ...), system catalogs, and `UPDATE`/`DELETE` without a `WHERE` that names a column. The `WHERE` rule catches a forgotten clause, not a determined one: `maxWritesPerCall` rolling back a runaway statement is the actual guard. `dryRun: true` returns the decision without running anything. Full rules: [connector-sql README](./packages/connector-sql/README.md#policy-layer).
 
 ## What's in the box
 
@@ -165,7 +165,7 @@ Every tool call goes through the same fixed pipeline:
 agent auth → scope check → rate limit → timeout → policy → handler → redact → size cap → untrusted-wrap → audit
 ```
 
-1. **Policy before the database.** The SQL is parsed and every table and column it touches is checked. The agent gets the reason, not a generic error.
+1. **Policy before the database.** The SQL is parsed and every table, column, and function it touches is checked. The agent gets the reason, not a generic error. The parser is defense-in-depth: the database user's grants are the control, and `doctor` fails if that user is superuser or can read server files.
 2. **Read-only at the database too.** If the policy grants no writes, the connection itself is read-only, so a classifier bug can't become a write. Writes go through one tool, in a transaction, with a row limit.
 3. **Per-agent identity.** Each agent has its own token (stored as a sha256 hash), its own sources and scopes, and a policy that can only narrow the source's. The audit log names the agent from the token.
 4. **Redaction and wrapping.** Emails, JWTs, AWS keys, GitHub tokens, SSNs and card numbers are redacted from results. Every result is wrapped in `<mcpolyglot-data>` so the model treats it as data, not instructions.

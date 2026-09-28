@@ -44,15 +44,21 @@ Rules (each has a case in `src/__tests__/policy.test.ts`):
 
 - Unparseable SQL is denied. So is more than one statement per call.
 - Anything other than `SELECT`/`INSERT`/`UPDATE`/`DELETE` is always denied: DDL, `GRANT`, `TRUNCATE`, `SET`, and so on.
-- `UPDATE`/`DELETE` without `WHERE` is denied.
+- `UPDATE`/`DELETE` without `WHERE` is denied, as is a `WHERE` that names no column (`WHERE 1=1`). This catches a forgotten clause; a determined full-table write is stopped by `maxWritesPerCall` rolling it back, not by this check.
+- `SELECT ... INTO OUTFILE/DUMPFILE` (MySQL) and `SELECT ... INTO table` (Postgres) are denied.
+- Functions that reach the server's filesystem, other hosts, or the session itself are denied by name in every dialect: `pg_read_file`, `pg_ls_dir`, `lo_import`/`lo_export`, `dblink*`, `pg_sleep`, `LOAD_FILE`, `SLEEP`, `load_extension`, and so on (`DENIED_FUNCTIONS` in `policy.ts`). The list is a backstop; revoke the privileges at the database.
+- System catalogs (`information_schema`, `pg_catalog`, `pg_*`, `mysql`, `performance_schema`, `sys`, `sqlite_*`) are denied under any `defaultAccess` unless a `tables` key names the table.
 - Every table referenced anywhere (joins, subqueries, `INSERT … SELECT`) is checked. `none` tables are denied and hidden from `list_tables`. Writes need an explicit `write` entry.
 - When several policy keys could match a table (`users` and `public.users`), the most restrictive wins.
 - A denied column is blocked wherever it appears: select list, `WHERE`, subqueries, aliased tables. `SELECT *` is denied if it could expose one. With a `*.col` rule, that means every `SELECT *`. Denied columns are also stripped from `list_tables`/`describe_table`.
+- A whole-row reference is treated like `SELECT *` on that table: `SELECT u FROM users u`, `to_jsonb(u)`, `json_agg(u)`, `row_to_json(users)`, `u::text`. Any bare identifier that matches a table name or alias in the query counts, so a column that shares its table's name is denied too when that table has denied columns.
+- Second layer, after the query runs: any object or array value in the result has keys named like a denied column removed, at any depth. This is what stops a denied column that still arrives inside a JSON value the classifier could not attribute.
 - `dryRun: true` returns `{ decision }` without executing.
 
 Known limits:
 
-- The policy sees tables and columns, not functions, so `SELECT pg_read_file(...)` passes the classifier. Enforce that with the DB role's privileges.
+- The function denylist is by name. A user-defined wrapper, an extension function not on the list, or `COPY ... TO PROGRAM` (blocked as non-SELECT) are examples of why the classifier is defense-in-depth. The database user's privileges are the control: `mcpolyglot doctor` fails when that user is a superuser, is in `pg_read_server_files`/`pg_write_server_files`/`pg_execute_server_program`, or holds MySQL `FILE`/`SUPER`/`ALL PRIVILEGES`.
+- A whole-row value cast to text (`u::text`) is not JSON, so the output filter cannot strip fields from it; the classifier denies the reference instead. If a parser gap lets one through, the redactor still masks the built-in PII patterns.
 - `query` never writes, even on a writable connection: Postgres/MySQL run it in a read-only transaction and SQLite refuses non-reader statements.
 
 ## Writes and connection safety
