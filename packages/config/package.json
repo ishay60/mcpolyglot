@@ -29,8 +29,8 @@
   },
   "dependencies": {
     "@mcpolyglot/core": "workspace:^",
-    "tsx": "^4.19.1",
-    "yaml": "^2.8.4",
+    "tsx": "^4.23.1",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
