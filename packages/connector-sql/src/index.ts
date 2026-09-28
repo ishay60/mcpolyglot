@@ -5,6 +5,7 @@ export { MysqlDialect } from './dialects/mysql.js';
 export { SqliteDialect } from './dialects/sqlite.js';
 export {
   classify,
+  narrowPolicy,
   isColumnDenied,
   tableAccess,
   PolicySchema,
