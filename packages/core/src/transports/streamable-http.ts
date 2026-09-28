@@ -4,9 +4,10 @@ import {
   type Server as HttpServer,
   type ServerResponse,
 } from 'node:http';
-import { timingSafeEqual, randomBytes } from 'node:crypto';
+import { createHash, timingSafeEqual, randomBytes } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { Server as McpServer } from '@modelcontextprotocol/sdk/server/index.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { Transport } from '../transport.js';
 import { createOAuthVerifier, type OAuthVerifier, type OAuthVerifierOptions } from './oauth.js';
 
@@ -22,7 +23,19 @@ export interface OAuthAuthOptions extends OAuthVerifierOptions {
   kind: 'oauth';
 }
 
-export type HttpAuthOptions = BearerAuthOptions | OAuthAuthOptions;
+/**
+ * Per-agent tokens: each bearer token is sha256-hashed and matched against the agents'
+ * stored hashes. The matched agent id reaches request handlers as `authInfo.clientId`.
+ */
+export interface AgentsAuthOptions {
+  kind: 'agents';
+  agents: ReadonlyArray<{
+    id: string;
+    tokens: ReadonlyArray<{ hash: string; revoked?: boolean }>;
+  }>;
+}
+
+export type HttpAuthOptions = BearerAuthOptions | OAuthAuthOptions | AgentsAuthOptions;
 
 export interface StreamableHttpTransportOptions {
   host: string;
@@ -47,18 +60,19 @@ export interface StreamableHttpTransportOptions {
 
 type ResolvedAuth =
   | { kind: 'bearer'; token: string }
+  | { kind: 'agents'; hashes: { agentId: string; hash: Buffer }[] }
   | { kind: 'oauth'; verifier: OAuthVerifier; issuer: string; audience: string };
 
 export class StreamableHttpTransport implements Transport {
   readonly kind = 'http' as const;
   /** Bearer token in use, or `undefined` when running in OAuth mode. */
   readonly bearerToken: string | undefined;
-  readonly authKind: 'bearer' | 'oauth';
+  readonly authKind: 'bearer' | 'oauth' | 'agents';
   private readonly host: string;
   private readonly port: number;
   private readonly auth: ResolvedAuth;
   private readonly logger: NonNullable<StreamableHttpTransportOptions['logger']>;
-  private inner?: StreamableHTTPServerTransport;
+  private newServer?: () => McpServer;
   private httpServer?: HttpServer;
 
   constructor(opts: StreamableHttpTransportOptions) {
@@ -75,12 +89,8 @@ export class StreamableHttpTransport implements Transport {
     };
   }
 
-  async start(server: McpServer): Promise<void> {
-    this.inner = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    this.inner.onerror = (err) => {
-      this.logger.warn('http.transport.error', { error: err.message });
-    };
-    await server.connect(this.inner);
+  async start(newServer: () => McpServer): Promise<void> {
+    this.newServer = newServer;
 
     this.httpServer = createServer((req, res) => {
       this.handle(req, res).catch((err) => {
@@ -111,6 +121,8 @@ export class StreamableHttpTransport implements Transport {
     if (this.auth.kind === 'bearer') {
       // Tokens are sensitive; emit a fingerprint not the token itself.
       fields.tokenFingerprint = fingerprint(this.auth.token);
+    } else if (this.auth.kind === 'agents') {
+      fields.agents = new Set(this.auth.hashes.map((h) => h.agentId)).size;
     } else {
       fields.issuer = this.auth.issuer;
       fields.audience = this.auth.audience;
@@ -130,8 +142,7 @@ export class StreamableHttpTransport implements Transport {
       await new Promise<void>((resolve) => this.httpServer!.close(() => resolve()));
       this.httpServer = undefined;
     }
-    await this.inner?.close();
-    this.inner = undefined;
+    this.newServer = undefined;
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -151,17 +162,34 @@ export class StreamableHttpTransport implements Transport {
       return;
     }
 
-    if (!this.inner) {
+    if (!this.newServer) {
       res.statusCode = 503;
       res.end();
       return;
     }
-    await this.inner.handleRequest(req, res);
+    if (authResult.agentId) {
+      // The SDK hands `req.auth` to request handlers as `extra.authInfo`. No token in it.
+      const auth: AuthInfo = { token: '', clientId: authResult.agentId, scopes: [] };
+      (req as IncomingMessage & { auth?: AuthInfo }).auth = auth;
+    }
+    // Stateless mode: the SDK allows one request per transport, so each request gets its own
+    // transport + protocol server, torn down when the response closes.
+    const inner = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    inner.onerror = (err) => {
+      this.logger.warn('http.transport.error', { error: err.message });
+    };
+    const server = this.newServer();
+    res.on('close', () => {
+      void inner.close();
+      void server.close();
+    });
+    await server.connect(inner);
+    await inner.handleRequest(req, res);
   }
 
   private async checkAuth(
     req: IncomingMessage,
-  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  ): Promise<{ ok: true; agentId?: string } | { ok: false; reason: string }> {
     const header = req.headers.authorization ?? '';
     if (!header.startsWith('Bearer ')) {
       return { ok: false, reason: 'missing_bearer' };
@@ -174,6 +202,11 @@ export class StreamableHttpTransport implements Transport {
       const b = Buffer.from(expected);
       if (a.length !== b.length) return { ok: false, reason: 'invalid_token' };
       return timingSafeEqual(a, b) ? { ok: true } : { ok: false, reason: 'invalid_token' };
+    }
+
+    if (this.auth.kind === 'agents') {
+      const agentId = matchAgent(this.auth.hashes, token);
+      return agentId ? { ok: true, agentId } : { ok: false, reason: 'invalid_token' };
     }
 
     const result = await this.auth.verifier.verify(token);
@@ -190,6 +223,17 @@ function resolveAuth(opts: StreamableHttpTransportOptions): ResolvedAuth {
   if (!opts.auth) {
     return { kind: 'bearer', token: opts.bearerToken ?? generateToken() };
   }
+  if (opts.auth.kind === 'agents') {
+    return {
+      kind: 'agents',
+      // Revoked tokens are dropped here, so they fail exactly like unknown ones.
+      hashes: opts.auth.agents.flatMap((a) =>
+        a.tokens
+          .filter((t) => !t.revoked)
+          .map((t) => ({ agentId: a.id, hash: Buffer.from(t.hash.toLowerCase(), 'hex') })),
+      ),
+    };
+  }
   if (opts.auth.kind === 'bearer') {
     return { kind: 'bearer', token: opts.auth.token ?? opts.bearerToken ?? generateToken() };
   }
@@ -201,10 +245,10 @@ function resolveAuth(opts: StreamableHttpTransportOptions): ResolvedAuth {
   };
 }
 
-function wwwAuthenticate(kind: 'bearer' | 'oauth', reason: string): string {
+function wwwAuthenticate(kind: ResolvedAuth['kind'], reason: string): string {
   const errorCode = mapReasonToWwwError(reason);
   // RFC 6750 §3 — `error` and `error_description` belong on Bearer challenges.
-  if (kind === 'bearer') {
+  if (kind !== 'oauth') {
     return `Bearer realm="mcpolyglot", error="${errorCode}"`;
   }
   return `Bearer realm="mcpolyglot", error="${errorCode}", error_description="${reason}"`;
@@ -223,6 +267,29 @@ function mapReasonToWwwError(reason: string): string {
     default:
       return 'invalid_token';
   }
+}
+
+/** sha256 hex of a bearer token — the only form an agent token is ever stored in. */
+export function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Compare the token's hash against every stored hash with `timingSafeEqual`, without
+ * stopping at the first match, so timing doesn't reveal which (or whether an) entry hit.
+ */
+export function matchAgent(
+  hashes: readonly { agentId: string; hash: Buffer }[],
+  token: string,
+): string | undefined {
+  const candidate = createHash('sha256').update(token).digest();
+  let found: string | undefined;
+  for (const h of hashes) {
+    if (h.hash.length === candidate.length && timingSafeEqual(h.hash, candidate)) {
+      found ??= h.agentId;
+    }
+  }
+  return found;
 }
 
 function generateToken(): string {
