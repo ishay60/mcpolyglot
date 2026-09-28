@@ -1,6 +1,6 @@
 {
   "name": "@mcpolyglot/connector-sql",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared SQL connector for mcpolyglot with Postgres, MySQL/MariaDB, and SQLite dialects. Read-only-by-default with per-dialect enforcement.",
   "license": "MIT",
   "repository": {

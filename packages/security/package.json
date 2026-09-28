@@ -1,6 +1,6 @@
 {
   "name": "@mcpolyglot/security",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Non-bypassable security middleware for mcpolyglot: scopes, redaction, audit, rate-limit, and untrusted-data wrapping.",
   "license": "MIT",
   "repository": {
