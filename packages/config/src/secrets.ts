@@ -62,7 +62,8 @@ async function resolveOne(kind: string, target: string): Promise<string> {
  * Used by `mcpolyglot doctor` to surface warnings.
  */
 export function looksLikeLiteralCredential(value: string): boolean {
-  if (REF_RE.test(value)) return false;
+  // Not REF_RE.test(): a /g regex keeps lastIndex, which matchAll() in resolveSecrets inherits.
+  if (new RegExp(REF_RE.source).test(value)) return false;
 
   // postgres://user:pass@host/db with a non-trivial password
   const dbUriMatch = value.match(/^[a-z][a-z0-9+]*:\/\/[^:@/\s]+:([^@/\s]+)@/i);
