@@ -33,6 +33,28 @@ These are enforced by the server, not requested of the model. Every tool call ru
 | Act without a trace                      | Every call, including failures, appends a JSONL audit line (session, agent id, tool, allow/deny decision + reason, scopes, args hash, duration, rows, redactions). Raw args and rows are never logged. |
 | Reach the HTTP transport unauthenticated | Bearer token (auto-generated if unset) or OAuth JWT verified against the issuer's JWKS (`iss`, `aud`, `exp`). Binds to loopback by default and warns otherwise.                                        |
 
+### Where each claim is tested
+
+If a guardrail is claimed here or in the README, a test fails when it stops being true. CI runs all of them against real Postgres 16, MySQL 8.4 and SQLite, and fails if any test is skipped.
+
+| Claim                                                                               | Test                                                                                         |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| DDL, multi-statement, unparseable SQL always denied; `UPDATE`/`DELETE` need `WHERE` | `packages/connector-sql/src/__tests__/policy.test.ts`                                        |
+| Per-table `read`/`write`/`none`, most-restrictive match, no default write           | `policy.test.ts`                                                                             |
+| Denied columns blocked in any position and hidden from `list_tables`                | `policy.test.ts`, `dialects.integration.test.ts`, `sqlite.integration.test.ts`               |
+| DB-level read-only catches a write the policy allowed                               | `dialects.integration.test.ts` (Postgres, MySQL), `sqlite.integration.test.ts`               |
+| Dry-run never executes                                                              | `sqlite.integration.test.ts`                                                                 |
+| Mongo `$out` / `$merge` rejected                                                    | `packages/connector-mongo/src/__tests__/aggregate-gate.test.ts`                              |
+| Scope check runs before the handler                                                 | `packages/core/src/__tests__/pipeline.test.ts`                                               |
+| Per-call timeout cuts off a hung handler                                            | `pipeline.test.ts`, and the DB-side timeout in `dialects.integration.test.ts`                |
+| Rate limit and concurrency cap; slot released on every outcome                      | `packages/security/src/__tests__/rate-limiter.test.ts`, `pipeline.test.ts`                   |
+| Row cap and byte cap truncate and flag                                              | `sqlite.integration.test.ts`, `dialects.integration.test.ts`, `wrap.test.ts`                 |
+| Each built-in redaction pattern                                                     | `redactor.test.ts`                                                                           |
+| Results wrapped as untrusted data                                                   | `wrap.test.ts`                                                                               |
+| Audit: every call, allow/deny/error, agent id, no raw args or rows, scrubbed text   | `pipeline.test.ts`, `packages/security/src/__tests__/audit.test.ts`                          |
+| HTTP: bearer required, OAuth `iss`/`aud`/`exp`/key checks, loopback default         | `streamable-http.test.ts`, `oauth.test.ts`, `packages/config/src/__tests__/defaults.test.ts` |
+| Literal credentials flagged                                                         | `secrets.test.ts`                                                                            |
+
 What this does **not** cover: prompt injection can still steer the model into making allowed read calls it shouldn't, and data the agent is allowed to read can leave through the client. Scope the database role and the granted scopes to what the agent actually needs.
 
 ## Hardening checklist for self-hosting
@@ -46,5 +68,6 @@ What this does **not** cover: prompt injection can still steer the model into ma
 ## Known limitations (alpha)
 
 - The current rate limiter is in-process only.
+- A timed-out call returns to the agent at the limit, but the abandoned query keeps running until the database's own timeout stops it. SQLite (`better-sqlite3`) is synchronous and blocks the process until the query finishes, so a slow SQLite query cannot be interrupted.
 - The HTTP transport defaults to a shared bearer token. OAuth mode verifies JWTs (signature, `iss`, `aud`, `exp`) but does not map token claims to scopes yet.
 - Per-table write tools (Wave 3) will require explicit scope opt-in and do not yet support row-level filters.

@@ -24,8 +24,11 @@ import { McpolyglotError, TimeoutError } from './errors.js';
 export interface SecurityHooks {
   /** Phase 1 — reject if granted scopes don't cover the tool's required scopes. */
   checkScopes(toolName: string, required: readonly Scope[], granted: ReadonlySet<Scope>): void;
-  /** Phase 2 — token-bucket + concurrency gate. Throws `RateLimitError` on violation. */
-  checkRateLimit(toolName: string, sessionId: string): Promise<void>;
+  /**
+   * Phase 2 — token-bucket + concurrency gate. Throws `RateLimitError` on violation. May
+   * return a release function; the server calls it when the call finishes.
+   */
+  checkRateLimit(toolName: string, sessionId: string): Promise<void | (() => void)>;
   /** Phase 5 — strip secrets, drop denied columns. Returns the new result and the redaction count. */
   redact(toolName: string, result: ToolResult): { result: ToolResult; redactionsApplied: number };
   /** Phase 6 — hard cap on serialized output bytes. Truncates and flips `metadata.truncated`. */
@@ -209,13 +212,14 @@ export class McpolyglotServer {
     let result: ToolResult | undefined;
     let errorEntry: AuditEntry['error'];
     let decision: AuditEntry['decision'] = 'allow';
+    let release: void | (() => void) = undefined;
 
     try {
       // 1. scope check
       this.security.hooks.checkScopes(def.name, def.scopes, this.scopes);
 
       // 2. rate limit
-      await this.security.hooks.checkRateLimit(def.name, this.sessionId);
+      release = await this.security.hooks.checkRateLimit(def.name, this.sessionId);
 
       // 3. timeout
       const ac = new AbortController();
@@ -229,14 +233,18 @@ export class McpolyglotServer {
         logger: this.logger,
       };
 
+      // Race the handler against the timer: a handler that ignores `signal` (a sync driver,
+      // a hung socket) must still not hold the call open past the limit.
+      const timedOut = new Promise<never>((_, reject) =>
+        ac.signal.addEventListener('abort', () =>
+          reject(new TimeoutError(`Tool ${def.name} exceeded ${ctx.limits.timeoutMs}ms`)),
+        ),
+      );
       try {
         const parsed = def.inputSchema.parse(rawArgs);
-        result = await def.handler(parsed, ctx);
+        result = await Promise.race([def.handler(parsed, ctx), timedOut]);
       } finally {
         clearTimeout(timer);
-        if (ac.signal.aborted && !result) {
-          throw new TimeoutError(`Tool ${def.name} exceeded ${ctx.limits.timeoutMs}ms`);
-        }
       }
 
       // 4. redaction
@@ -275,6 +283,7 @@ export class McpolyglotServer {
       }
       throw err;
     } finally {
+      release?.();
       await this.security.hooks.audit({
         ts: new Date().toISOString(),
         sessionId: this.sessionId,

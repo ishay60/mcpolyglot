@@ -7,6 +7,7 @@ import type { z } from 'zod';
  * `handler: ({ name }) => ...` without an explicit generic — the destructure
  * remains permissive while runtime parsing still enforces the schema.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
 export type AnyZodSchema = z.ZodType<any>;
 export type ZodInfer<S extends AnyZodSchema> = z.infer<S>;
 

@@ -20,3 +20,31 @@ describe('RateLimiter', () => {
     await expect(rl.check('demo.list_tables', 'session-a')).resolves.not.toThrow();
   });
 });
+
+describe('RateLimiter concurrency', () => {
+  it('caps concurrent calls, and frees the slot when a call finishes', async () => {
+    const rl = new RateLimiter({ perMinute: 100, maxConcurrent: 2 });
+    const a = await rl.check('t', 's');
+    const b = await rl.check('t', 's');
+    await expect(rl.check('t', 's')).rejects.toMatchObject({ code: 'rate_limited' });
+    a();
+    const c = await rl.check('t', 's');
+    b();
+    c();
+  });
+
+  it('sequential calls never hit the concurrency cap', async () => {
+    const rl = new RateLimiter({ perMinute: 100, maxConcurrent: 1 });
+    for (let i = 0; i < 10; i++) (await rl.check('t', 's'))();
+  });
+
+  it('release is idempotent', async () => {
+    const rl = new RateLimiter({ perMinute: 100, maxConcurrent: 1 });
+    const r = await rl.check('t', 's');
+    r();
+    r();
+    const r2 = await rl.check('t', 's');
+    await expect(rl.check('t', 's')).rejects.toMatchObject({ code: 'rate_limited' });
+    r2();
+  });
+});

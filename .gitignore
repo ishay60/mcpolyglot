@@ -32,3 +32,6 @@ audit.log
 *.db
 *.sqlite
 *.sqlite3
+
+coverage/
+results.json

@@ -9,6 +9,8 @@ import { McpolyglotError } from '../errors.js';
 
 const SECRET_ARG = 'super-secret-arg-value';
 
+let handlerCalls = 0;
+
 function fakeConnector(): Connector {
   return {
     id: 'fake',
@@ -41,6 +43,25 @@ function fakeConnector(): Connector {
         },
       },
       {
+        name: 'fake.scoped',
+        description: 'needs a scope nobody has',
+        inputSchema: z.object({}),
+        scopes: ['tables:write'],
+        readOnly: false,
+        handler: async () => {
+          handlerCalls += 1;
+          return { content: [] };
+        },
+      },
+      {
+        name: 'fake.slow',
+        description: 'ignores the abort signal and never returns in time',
+        inputSchema: z.object({}),
+        scopes: [],
+        readOnly: true,
+        handler: () => new Promise(() => {}),
+      },
+      {
         name: 'fake.broken',
         description: 'broken',
         inputSchema: z.object({ q: z.string() }),
@@ -54,15 +75,24 @@ function fakeConnector(): Connector {
   } as unknown as Connector;
 }
 
-async function boot() {
+async function boot(opts: { timeoutMs?: number } = {}) {
   const entries: AuditEntry[] = [];
+  const rate = { taken: 0, released: 0 };
   const passthrough = (_: string, r: never) => r;
   const server = new McpolyglotServer({
     connectors: [fakeConnector()],
     security: {
       hooks: {
-        checkScopes: () => {},
-        checkRateLimit: async () => {},
+        checkScopes: (_name, required, granted) => {
+          const missing = required.filter((s) => !granted.has(s));
+          if (missing.length) throw new McpolyglotError('forbidden.scope', `missing ${missing}`);
+        },
+        checkRateLimit: async () => {
+          rate.taken += 1;
+          return () => {
+            rate.released += 1;
+          };
+        },
         redact: (_t, result) => ({ result, redactionsApplied: 0 }),
         enforceSize: passthrough,
         wrapUntrusted: (r) => r,
@@ -70,7 +100,7 @@ async function boot() {
           entries.push(e);
         },
       },
-      defaultLimits: { rowCap: 10, timeoutMs: 5_000, maxBytes: 65_536 },
+      defaultLimits: { rowCap: 10, timeoutMs: opts.timeoutMs ?? 5_000, maxBytes: 65_536 },
       defaultScopes: [],
     },
   });
@@ -83,7 +113,7 @@ async function boot() {
   await server.start(transport);
   const client = new Client({ name: 'test-agent', version: '1.0.0' });
   await client.connect(clientSide);
-  return { client, entries, server };
+  return { client, entries, server, rate };
 }
 
 describe('audit entries', () => {
@@ -122,6 +152,39 @@ describe('audit entries', () => {
     await client.callTool({ name: 'fake.ok', arguments: { q: 'b' } });
     expect(entries[0]!.argsHash).toBe(entries[1]!.argsHash);
     expect(entries[0]!.argsHash).not.toBe(entries[2]!.argsHash);
+    await server.stop();
+  });
+});
+
+describe('pipeline guarantees', () => {
+  it('scope check rejects before the handler runs', async () => {
+    const { client, entries, server } = await boot();
+    handlerCalls = 0;
+    const r = await client.callTool({ name: 'fake.scoped', arguments: {} });
+    expect(r.isError).toBe(true);
+    expect(handlerCalls).toBe(0);
+    expect(entries[0]).toMatchObject({ decision: 'deny', error: { code: 'forbidden.scope' } });
+    await server.stop();
+  });
+
+  it('a handler that never returns is cut off at the timeout', async () => {
+    const { client, entries, server } = await boot({ timeoutMs: 100 });
+    const t0 = Date.now();
+    const r = await client.callTool({ name: 'fake.slow', arguments: {} });
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    expect(r.isError).toBe(true);
+    expect(entries[0]).toMatchObject({ decision: 'deny', error: { code: 'timeout' } });
+    await server.stop();
+  });
+
+  it('releases the rate-limit slot on success, deny, timeout and error', async () => {
+    const { client, server, rate } = await boot({ timeoutMs: 100 });
+    for (const name of ['fake.ok', 'fake.denied', 'fake.slow', 'fake.broken']) {
+      await client
+        .callTool({ name, arguments: name === 'fake.slow' ? {} : { q: 'x' } })
+        .catch(() => {});
+    }
+    expect(rate).toEqual({ taken: 4, released: 4 });
     await server.stop();
   });
 });

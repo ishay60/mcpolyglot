@@ -6,7 +6,6 @@ export const stderrSink: Sink = (s) => {
   process.stderr.write(s + '\n');
 };
 export const stdoutSink: Sink = (s) => {
-  // eslint-disable-next-line no-console
   console.log(s);
 };
 
@@ -41,7 +40,6 @@ function termWidth(): number {
 }
 
 function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
   return s.replace(/\x1b\[[0-9;]*m/g, '');
 }
 

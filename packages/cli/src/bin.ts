@@ -75,7 +75,6 @@ program
   });
 
 program.parseAsync(process.argv).catch((err: Error) => {
-  // eslint-disable-next-line no-console
   console.error(`mcpolyglot: ${err.message}`);
   process.exit(1);
 });
