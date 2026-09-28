@@ -1,6 +1,8 @@
 import {
   McpolyglotServer,
+  type AgentGrant,
   type Connector,
+  type Scope,
   type SecurityHooks,
   ConfigError,
 } from '@mcpolyglot/core';
@@ -8,6 +10,7 @@ import {
   type McpolyglotConfig,
   type SourceConfig,
   type SqlSourceConfig,
+  type AgentConfig,
   resolveSecrets,
 } from '@mcpolyglot/config';
 import { defaultSecurityHooks } from '@mcpolyglot/security';
@@ -24,6 +27,8 @@ export interface BuiltServer {
   server: McpolyglotServer;
   hooks: SecurityHooks;
   connectors: Connector[];
+  /** Present when `cfg.agents` is set. */
+  agents?: AgentGrant[];
   perEntity: Record<string, { enabled: boolean; include?: string[]; exclude?: string[] }>;
 }
 
@@ -47,6 +52,8 @@ export async function buildServerFromConfig(
       }
     }
   }
+
+  const agents = cfg.agents ? await buildAgents(cfg, connectors) : undefined;
 
   const hooks = defaultSecurityHooks({
     rateLimit: {
@@ -86,10 +93,46 @@ export async function buildServerFromConfig(
     perEntity,
     scopes: collectScopes(cfg.sources),
     security: { hooks, defaultLimits, defaultScopes: collectScopes(cfg.sources) },
+    ...(agents ? { agents } : {}),
     logger,
   });
 
-  return { server, hooks, connectors, perEntity };
+  return { server, hooks, connectors, ...(agents ? { agents } : {}), perEntity };
+}
+
+/**
+ * One grant per agent. A source listed without a policy reuses the shared connector (and its
+ * pool); a per-agent policy gets its own connector — and its own DB connection.
+ */
+async function buildAgents(cfg: McpolyglotConfig, shared: Connector[]): Promise<AgentGrant[]> {
+  const ids = new Set<string>();
+  const hashes = new Set<string>();
+  const out: AgentGrant[] = [];
+  for (const a of cfg.agents ?? []) {
+    if (ids.has(a.id)) throw new ConfigError(`Duplicate agent id "${a.id}"`);
+    ids.add(a.id);
+    for (const t of a.tokens) {
+      if (hashes.has(t.hash)) throw new ConfigError(`Agent "${a.id}" reuses a token hash`);
+      hashes.add(t.hash);
+    }
+    const sources: SourceConfig[] = [];
+    const connectors: Connector[] = [];
+    for (const [srcId, override] of Object.entries(a.sources)) {
+      const i = cfg.sources.findIndex((s) => s.id === srcId);
+      const src = cfg.sources[i];
+      if (!src) throw new ConfigError(`Agent "${a.id}" lists unknown source "${srcId}"`);
+      sources.push(src);
+      if (!override.policy) {
+        connectors.push(shared[i]!);
+      } else if (src.kind === 'mongo' || src.kind === 'openapi') {
+        throw new ConfigError(`Agent "${a.id}": policy is only supported on SQL sources`);
+      } else {
+        connectors.push(await buildConnector({ ...src, policy: override.policy }));
+      }
+    }
+    out.push({ id: a.id, scopes: agentScopes(a, sources), connectors });
+  }
+  return out;
 }
 
 async function buildConnector(src: SourceConfig): Promise<Connector> {
@@ -146,12 +189,18 @@ function sqlPolicy(src: SqlSourceConfig) {
   return parsed.data;
 }
 
+/** An agent never gets a scope its sources don't grant. */
+export function agentScopes(agent: AgentConfig, sources: SourceConfig[]): Scope[] {
+  const allowed = collectScopes(sources);
+  return agent.scopes ? agent.scopes.filter((s) => allowed.includes(s)) : allowed;
+}
+
 function getLimits(src: SourceConfig): { rowCap: number; timeoutMs: number; maxBytes: number } {
   return src.limits;
 }
 
 function collectScopes(sources: SourceConfig[]) {
-  const set = new Set<import('@mcpolyglot/core').Scope>();
+  const set = new Set<Scope>();
   for (const s of sources) for (const sc of s.scopes) set.add(sc);
   return Array.from(set);
 }

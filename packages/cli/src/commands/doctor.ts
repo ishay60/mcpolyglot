@@ -1,6 +1,7 @@
 import pc from 'picocolors';
 import { loadConfig, looksLikeLiteralCredential } from '@mcpolyglot/config';
 import { buildServerFromConfig } from '../factory.js';
+import { doctorAgents } from './doctor-agents.js';
 import {
   headerBar,
   section,
@@ -81,6 +82,7 @@ export async function doctorCommand(opts: DoctorOptions): Promise<boolean> {
     }
   }
 
+  doctorAgents(cfg, connectors);
   await server.stop().catch(() => {});
 
   section('Summary', stdoutSink);

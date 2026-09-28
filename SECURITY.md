@@ -53,6 +53,10 @@ If a guardrail is claimed here or in the README, a test fails when it stops bein
 | Results wrapped as untrusted data                                                   | `wrap.test.ts`                                                                               |
 | Audit: every call, allow/deny/error, agent id, no raw args or rows, scrubbed text   | `pipeline.test.ts`, `packages/security/src/__tests__/audit.test.ts`                          |
 | HTTP: bearer required, OAuth `iss`/`aud`/`exp`/key checks, loopback default         | `streamable-http.test.ts`, `oauth.test.ts`, `packages/config/src/__tests__/defaults.test.ts` |
+| Agent tokens: sha256-hashed, constant-time lookup; revoked/unknown → 401            | `streamable-http.test.ts`, `packages/cli/src/__tests__/agents.test.ts`                       |
+| Per-agent sources, scopes and policy filter `tools/list` and `tools/call`           | `agents.test.ts`                                                                             |
+| Audit `agentId` comes from the token, not the `x-mcpolyglot-agent` header           | `agents.test.ts`                                                                             |
+| Without `agents`, single shared token behavior is unchanged                         | `agents.test.ts`, `streamable-http.test.ts`                                                  |
 | Literal credentials flagged                                                         | `secrets.test.ts`                                                                            |
 
 What this does **not** cover: prompt injection can still steer the model into making allowed read calls it shouldn't, and data the agent is allowed to read can leave through the client. Scope the database role and the granted scopes to what the agent actually needs.
@@ -69,5 +73,6 @@ What this does **not** cover: prompt injection can still steer the model into ma
 
 - The current rate limiter is in-process only.
 - A timed-out call returns to the agent at the limit, but the abandoned query keeps running until the database's own timeout stops it. SQLite (`better-sqlite3`) is synchronous and blocks the process until the query finishes, so a slow SQLite query cannot be interrupted.
-- The HTTP transport defaults to a shared bearer token. OAuth mode verifies JWTs (signature, `iss`, `aud`, `exp`) but does not map token claims to scopes yet.
+- The HTTP transport defaults to a shared bearer token; configure `agents` for per-agent tokens, sources, scopes and policy. Without `agents`, the audit `agentId` is client-asserted (header / `clientInfo`). OAuth mode verifies JWTs (signature, `iss`, `aud`, `exp`) but does not map token claims to scopes or agents yet, and cannot be combined with `agents`.
+- Agent config (including revocation) is read at startup; restart `serve` after revoking a token. Rate limits are per agent but still in-process.
 - Per-table write tools (Wave 3) will require explicit scope opt-in and do not yet support row-level filters.
