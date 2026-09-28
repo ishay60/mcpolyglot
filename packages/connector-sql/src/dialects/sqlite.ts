@@ -1,6 +1,6 @@
 import type { TableSchema, ColumnSchema } from '@mcpolyglot/core';
 import { McpolyglotError } from '@mcpolyglot/core';
-import type { SqlDialect, SqlQueryResult } from '../dialect.js';
+import { tooManyRows, type SqlDialect, type SqlQueryResult } from '../dialect.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type BetterSqlite3Database = any;
@@ -11,15 +11,15 @@ export class SqliteDialect implements SqlDialect {
 
   /**
    * @param fileOrUri Either an absolute path or a `sqlite://` URI.
-   *                  The file is opened **read-only** regardless of caller intent.
+   *                  Opened read-only unless `connect({ writable: true })`.
    */
   constructor(private readonly fileOrUri: string) {}
 
-  async connect(): Promise<void> {
+  async connect({ writable = false }: { writable?: boolean } = {}): Promise<void> {
     const Database = await loadSqlite();
     const path = this.resolvePath();
-    const db = new Database(path, { readonly: true, fileMustExist: true });
-    db.pragma('query_only = ON');
+    const db = new Database(path, { readonly: !writable, fileMustExist: true });
+    if (!writable) db.pragma('query_only = ON');
     this.db = db;
   }
 
@@ -87,6 +87,33 @@ export class SqliteDialect implements SqlDialect {
       ? Object.keys(rows[0])
       : ((stmt.columns() as Array<{ name: string }>).map((c) => c.name) ?? []);
     return { columns, rows, rowCount: rows.length, truncated };
+  }
+
+  async runWrite(
+    sql: string,
+    params: ReadonlyArray<unknown>,
+    opts: { maxRowsAffected: number; timeoutMs: number; signal?: AbortSignal },
+  ): Promise<{ rowsAffected: number }> {
+    const db = this.requireDb();
+    if (opts.signal?.aborted) throw new McpolyglotError('aborted', 'Aborted before execution');
+    try {
+      // db.transaction() rolls back if the callback throws.
+      return db.transaction(() => {
+        const startedAt = Date.now();
+        const n = db.prepare(sql).run(...(params as unknown[])).changes as number;
+        if (Date.now() - startedAt > opts.timeoutMs) {
+          throw new McpolyglotError('timeout', `Write exceeded ${opts.timeoutMs}ms; rolled back`);
+        }
+        if (n > opts.maxRowsAffected) throw tooManyRows(n, opts.maxRowsAffected);
+        return { rowsAffected: n };
+      })();
+    } catch (err) {
+      const code = (err as { code?: string }).code ?? '';
+      if (code.startsWith('SQLITE_READONLY')) {
+        throw new McpolyglotError('forbidden.read_only', (err as Error).message);
+      }
+      throw err;
+    }
   }
 
   private requireDb(): BetterSqlite3Database {

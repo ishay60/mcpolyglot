@@ -19,6 +19,8 @@ export const PolicySchema = z
     maxRows: z.number().int().positive().optional(),
     maxWritesPerCall: z.number().int().positive().default(1),
     statementTimeoutMs: z.number().int().positive().optional(),
+    /** How long an `execute` idempotencyKey is remembered. */
+    idempotencyWindowMinutes: z.number().positive().default(10),
   })
   .strict();
 export type Policy = z.infer<typeof PolicySchema>;

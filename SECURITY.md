@@ -21,7 +21,7 @@ These are enforced by the server, not requested of the model. Every tool call ru
 
 | The agent cannot…                        | Enforced by                                                                                                                                                                                            |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Write, update, delete, or run DDL        | Default scopes are `schema:read` + `tables:read`. No shipped tool requires `tables:write`. Each dialect also opens a read-only session (below).                                                        |
+| Write, update, delete, or run DDL        | Default scopes are `schema:read` + `tables:read`. Only `<id>.execute` needs `tables:write`, and it exists only when the policy marks a table `write`; otherwise the DB connection itself is read-only. |
 | Slip a write past the SQL tool           | Postgres `BEGIN READ ONLY`; SQLite `query_only` pragma; MySQL AST gate + `SET TRANSACTION READ ONLY`. The database rejects it even if parsing is fooled.                                               |
 | Write through a Mongo pipeline           | Only `find` / `aggregate` are exposed; `$out` and `$merge` stages are rejected with `forbidden.read_only`.                                                                                             |
 | Call a tool its session wasn't granted   | Scope guard (phase 1) throws `ScopeError` before the handler runs. Raw queries need the explicit `query:raw` scope.                                                                                    |
@@ -44,6 +44,11 @@ If a guardrail is claimed here or in the README, a test fails when it stops bein
 | Denied columns blocked in any position and hidden from `list_tables`                | `policy.test.ts`, `dialects.integration.test.ts`, `sqlite.integration.test.ts`               |
 | DB-level read-only catches a write the policy allowed                               | `dialects.integration.test.ts` (Postgres, MySQL), `sqlite.integration.test.ts`               |
 | Dry-run never executes                                                              | `sqlite.integration.test.ts`                                                                 |
+| No write tables: connection refuses a raw write that bypasses the tools             | `dialects.integration.test.ts` (Postgres, MySQL), `sqlite.integration.test.ts`               |
+| `execute` registered only with a `write` table                                      | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
+| `execute` over `maxWritesPerCall` rolls back                                        | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
+| Idempotent replay doesn't re-execute; key reuse with other args errors              | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
+| `maxConcurrentQueries` rejects with `rate_limited`                                  | `dialects.integration.test.ts`, `sqlite.integration.test.ts`                                 |
 | Mongo `$out` / `$merge` rejected                                                    | `packages/connector-mongo/src/__tests__/aggregate-gate.test.ts`                              |
 | Scope check runs before the handler                                                 | `packages/core/src/__tests__/pipeline.test.ts`                                               |
 | Per-call timeout cuts off a hung handler                                            | `pipeline.test.ts`, and the DB-side timeout in `dialects.integration.test.ts`                |

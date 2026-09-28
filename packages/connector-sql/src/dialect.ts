@@ -1,4 +1,5 @@
 import type { TableSchema } from '@mcpolyglot/core';
+import { McpolyglotError } from '@mcpolyglot/core';
 
 export interface SqlQueryResult {
   columns: string[];
@@ -9,7 +10,8 @@ export interface SqlQueryResult {
 
 export interface SqlDialect {
   readonly kind: 'postgres' | 'mysql' | 'mariadb' | 'sqlite';
-  connect(): Promise<void>;
+  /** `writable: false` (the default) must open a connection the database itself keeps read-only. */
+  connect(opts?: { writable?: boolean }): Promise<void>;
   close(): Promise<void>;
   ping(): Promise<{ ok: boolean; latencyMs: number; details?: string }>;
   listTables(): Promise<TableSchema[]>;
@@ -19,4 +21,26 @@ export interface SqlDialect {
     params: ReadonlyArray<unknown>,
     opts: { rowCap: number; timeoutMs: number; signal?: AbortSignal },
   ): Promise<SqlQueryResult>;
+  /**
+   * Run one INSERT/UPDATE/DELETE in a transaction. If more than `maxRowsAffected` rows change,
+   * roll back and throw `forbidden.policy`. On a read-only connection the database refuses it.
+   */
+  runWrite(
+    sql: string,
+    params: ReadonlyArray<unknown>,
+    opts: { maxRowsAffected: number; timeoutMs: number; signal?: AbortSignal },
+  ): Promise<{ rowsAffected: number }>;
+}
+
+export interface PoolOptions {
+  max?: number;
+  idleTimeoutMs?: number;
+}
+
+export function tooManyRows(n: number, max: number): McpolyglotError {
+  return new McpolyglotError(
+    'forbidden.policy',
+    `Statement affected ${n} rows; policy maxWritesPerCall is ${max}. Rolled back.`,
+    { rowsAffected: n, maxWritesPerCall: max },
+  );
 }

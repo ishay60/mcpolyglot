@@ -59,6 +59,16 @@ const SqlSourceSchema = z.object({
   redact: RedactSchema,
   /** Access policy; validated strictly by `@mcpolyglot/connector-sql` at startup. */
   policy: z.record(z.string(), z.unknown()).optional(),
+  /** Driver pool. SQLite ignores it (one handle). */
+  pool: z
+    .object({
+      max: z.number().int().positive().max(100).optional(),
+      idleTimeoutMs: z.number().int().positive().optional(),
+    })
+    .strict()
+    .optional(),
+  /** Calls beyond this many in flight on this source are rejected with `rate_limited`. */
+  maxConcurrentQueries: z.number().int().positive().optional(),
 });
 
 const MongoSourceSchema = z.object({
