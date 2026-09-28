@@ -107,7 +107,7 @@ async function boot(opts: { timeoutMs?: number } = {}) {
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   const transport: Transport = {
     kind: 'stdio',
-    start: (s) => s.connect(serverSide),
+    start: (create) => create().connect(serverSide),
     stop: async () => {},
   };
   await server.start(transport);

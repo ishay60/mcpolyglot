@@ -7,8 +7,11 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
  */
 export interface Transport {
   readonly kind: 'stdio' | 'http';
-  /** Wire the transport to the MCP server and start accepting traffic. */
-  start(server: Server): Promise<void>;
+  /**
+   * Start accepting traffic. `createServer` returns a fresh MCP server wired to the tool
+   * pipeline; call it once per connection (stdio: once; stateless HTTP: per request).
+   */
+  start(createServer: () => Server): Promise<void>;
   /** Stop accepting traffic and close any underlying sockets. Must be idempotent. */
   stop(): Promise<void>;
 }

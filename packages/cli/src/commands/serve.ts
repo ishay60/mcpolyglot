@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { extname, basename } from 'node:path';
 import pc from 'picocolors';
 import { loadConfig, type McpolyglotConfig } from '@mcpolyglot/config';
+import { ConfigError } from '@mcpolyglot/core';
 import { StdioTransport } from '@mcpolyglot/core/transports/stdio';
 import { StreamableHttpTransport } from '@mcpolyglot/core/transports/streamable-http';
 import { buildServerFromConfig } from '../factory.js';
@@ -56,11 +57,17 @@ export async function serveCommand(opts: ServeOptions): Promise<void> {
 
   let transport: StdioTransport | StreamableHttpTransport;
   if (wantHttp) {
+    if (cfg.agents && httpAuth.type === 'oauth') {
+      throw new ConfigError(
+        '`agents` uses per-agent bearer tokens; it cannot be combined with OAuth.',
+      );
+    }
     const httpTransport = new StreamableHttpTransport({
       host: httpHost,
       port: httpPort,
-      auth:
-        httpAuth.type === 'oauth'
+      auth: cfg.agents
+        ? { kind: 'agents', agents: cfg.agents }
+        : httpAuth.type === 'oauth'
           ? {
               kind: 'oauth',
               issuer: httpAuth.issuer,
@@ -73,7 +80,9 @@ export async function serveCommand(opts: ServeOptions): Promise<void> {
     kv('Mode', pc.cyan('streamable-http'));
     kv('URL', link(`http://${httpHost}:${httpPort}/mcp`));
     kv('Health', link(`http://${httpHost}:${httpPort}/healthz`));
-    if (httpTransport.authKind === 'oauth' && httpAuth.type === 'oauth') {
+    if (cfg.agents) {
+      kv('Auth', pc.cyan(`agents · ${cfg.agents.map((a) => a.id).join(', ')}`));
+    } else if (httpTransport.authKind === 'oauth' && httpAuth.type === 'oauth') {
       kv('Auth', pc.cyan(`oauth · ${httpAuth.issuer}`));
       kv('Audience', pc.dim(httpAuth.audience));
     } else if (httpTransport.bearerToken) {
@@ -83,6 +92,7 @@ export async function serveCommand(opts: ServeOptions): Promise<void> {
   } else {
     transport = new StdioTransport();
     kv('Mode', pc.cyan('stdio'));
+    if (cfg.agents) kv('Agents', pc.yellow('ignored under stdio (single local user)'));
     kv('Config', pc.dim(basename(opts.config)));
   }
 

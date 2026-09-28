@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { z } from 'zod';
 import type { Connector, PerEntityConfig } from './connector.js';
 import type { Transport } from './transport.js';
@@ -54,7 +55,10 @@ export interface AuditEntry {
   /** ISO-8601 UTC timestamp. */
   ts: string;
   sessionId: string;
-  /** `x-mcpolyglot-agent` header (HTTP), else the MCP client's `clientInfo.name`. */
+  /**
+   * The agent authenticated by its HTTP token when `agents` is configured. Otherwise
+   * client-asserted: the `x-mcpolyglot-agent` header (HTTP), else MCP `clientInfo.name`.
+   */
   agentId?: string;
   tool: string;
   /** `deny` = rejected by policy/scope/rate limit/timeout; `error` = anything else that failed. */
@@ -81,12 +85,33 @@ export interface McpolyglotServerOptions {
   /** Scopes granted to the calling session. Defaults to `DEFAULT_SCOPES` (read-only). */
   scopes?: readonly Scope[];
   security: SecurityServices;
+  /**
+   * Per-agent grants. A request whose transport authenticated one of these ids (via
+   * `authInfo.clientId`) sees only that agent's connectors and scopes. Requests without an
+   * authenticated agent (stdio, plain bearer) use `connectors` + `scopes` as before.
+   */
+  agents?: AgentGrant[];
   logger?: {
     debug: (msg: string, fields?: Record<string, unknown>) => void;
     info: (msg: string, fields?: Record<string, unknown>) => void;
     warn: (msg: string, fields?: Record<string, unknown>) => void;
     error: (msg: string, fields?: Record<string, unknown>) => void;
   };
+}
+
+/** What one authenticated agent may use. */
+export interface AgentGrant {
+  id: string;
+  scopes: readonly Scope[];
+  /** Connectors this agent sees; may be per-agent instances (e.g. with their own policy). */
+  connectors: Connector[];
+}
+
+interface Caller {
+  agentId?: string;
+  scopes: Set<Scope>;
+  tools: Map<string, ToolDefinition>;
+  rateKey: string;
 }
 
 /**
@@ -114,11 +139,12 @@ export interface McpolyglotServerOptions {
  * ```
  */
 export class McpolyglotServer {
-  private readonly server: Server;
+  private readonly info: { name: string; version: string };
   private readonly tools = new Map<string, ToolDefinition>();
   private readonly connectors: Connector[];
   private readonly perEntity: Record<string, PerEntityConfig>;
   private readonly scopes: Set<Scope>;
+  private readonly agents: Map<string, AgentGrant & { tools: Map<string, ToolDefinition> }>;
   private readonly security: SecurityServices;
   private readonly sessionId = randomUUID();
   private readonly logger: NonNullable<McpolyglotServerOptions['logger']>;
@@ -130,14 +156,20 @@ export class McpolyglotServer {
     this.scopes = new Set(opts.scopes ?? DEFAULT_SCOPES);
     this.security = opts.security;
     this.logger = opts.logger ?? makeNoopLogger();
+    this.agents = new Map((opts.agents ?? []).map((a) => [a.id, { ...a, tools: new Map() }]));
 
-    this.server = new Server(
-      { name: opts.name ?? 'mcpolyglot', version: opts.version ?? '0.0.1' },
-      { capabilities: { tools: {} } },
-    );
+    this.info = { name: opts.name ?? 'mcpolyglot', version: opts.version ?? '0.0.1' };
+  }
 
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: Array.from(this.tools.values()).map((t) => ({
+  /**
+   * A fresh MCP protocol server bound to this instance's tools and pipeline. Stdio makes one;
+   * the stateless HTTP transport makes one per request (the SDK forbids reusing either).
+   */
+  private createMcpServer(): Server {
+    const server = new Server(this.info, { capabilities: { tools: {} } });
+
+    server.setRequestHandler(ListToolsRequestSchema, async (_req, extra) => ({
+      tools: Array.from(this.caller(server, extra).tools.values()).map((t) => ({
         name: t.name,
         description: t.description,
         inputSchema: z.toJSONSchema(t.inputSchema, { target: 'draft-7' }) as Record<
@@ -147,34 +179,33 @@ export class McpolyglotServer {
       })),
     }));
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
-      const def = this.tools.get(req.params.name);
+    server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+      const caller = this.caller(server, extra);
+      const def = caller.tools.get(req.params.name);
       if (!def) {
         throw new McpolyglotError('tool.not_found', `Unknown tool: ${req.params.name}`);
       }
-      const header = extra.requestInfo?.headers['x-mcpolyglot-agent'];
-      const agentId =
-        (Array.isArray(header) ? header[0] : header) ?? this.server.getClientVersion()?.name;
-      const internal = await this.executeTool(def, req.params.arguments ?? {}, agentId);
+      const internal = await this.executeTool(def, req.params.arguments ?? {}, caller);
       return toMcpResult(internal);
     });
+    return server;
   }
 
   async start(transport: Transport): Promise<void> {
+    for (const c of this.allConnectors()) await c.init({ logger: this.logger });
     for (const c of this.connectors) {
-      await c.init({ logger: this.logger });
-      for (const tool of c.listPrimitiveTools()) {
-        this.registerTool(tool);
-      }
-      const cfg = this.perEntity[c.id];
-      if (cfg?.enabled) {
-        for (const tool of c.generatePerEntityTools(cfg)) {
-          this.registerTool(tool);
+      for (const tool of this.toolsOf(c)) registerTool(this.tools, tool);
+    }
+    for (const a of this.agents.values()) {
+      for (const c of a.connectors) {
+        for (const tool of this.toolsOf(c)) {
+          // Agents only see tools their scopes fully cover.
+          if (tool.scopes.every((s) => a.scopes.includes(s))) registerTool(a.tools, tool);
         }
       }
     }
     this.transport = transport;
-    await transport.start(this.server);
+    await transport.start(() => this.createMcpServer());
     this.logger.info('mcpolyglot.started', {
       sessionId: this.sessionId,
       transport: transport.kind,
@@ -184,17 +215,47 @@ export class McpolyglotServer {
 
   async stop(): Promise<void> {
     await this.transport?.stop();
-    for (const c of this.connectors) {
+    for (const c of this.allConnectors()) {
       await c.close();
     }
-    await this.server.close();
   }
 
-  private registerTool(tool: ToolDefinition): void {
-    if (this.tools.has(tool.name)) {
-      throw new McpolyglotError('tool.duplicate', `Duplicate tool name: ${tool.name}`);
+  private allConnectors(): Set<Connector> {
+    return new Set([...this.connectors, ...[...this.agents.values()].flatMap((a) => a.connectors)]);
+  }
+
+  private toolsOf(c: Connector): ToolDefinition[] {
+    const cfg = this.perEntity[c.id];
+    return [...c.listPrimitiveTools(), ...(cfg?.enabled ? c.generatePerEntityTools(cfg) : [])];
+  }
+
+  /**
+   * Who is calling. Only `authInfo` set by our HTTP transport identifies an agent; headers
+   * and clientInfo are client-asserted and only used as an audit label when it's absent.
+   */
+  private caller(
+    server: Server,
+    extra: {
+      authInfo?: AuthInfo;
+      requestInfo?: { headers: Record<string, string | string[] | undefined> };
+    },
+  ): Caller {
+    const agent = extra.authInfo ? this.agents.get(extra.authInfo.clientId) : undefined;
+    if (agent) {
+      return {
+        agentId: agent.id,
+        scopes: new Set(agent.scopes),
+        tools: agent.tools,
+        rateKey: `agent:${agent.id}`,
+      };
     }
-    this.tools.set(tool.name, tool);
+    const header = extra.requestInfo?.headers['x-mcpolyglot-agent'];
+    return {
+      agentId: (Array.isArray(header) ? header[0] : header) ?? server.getClientVersion()?.name,
+      scopes: this.scopes,
+      tools: this.tools,
+      rateKey: this.sessionId,
+    };
   }
 
   /**
@@ -205,8 +266,9 @@ export class McpolyglotServer {
   private async executeTool(
     def: ToolDefinition,
     rawArgs: unknown,
-    agentId?: string,
+    caller: Caller,
   ): Promise<ToolResult> {
+    const { agentId, scopes } = caller;
     const started = Date.now();
     const argsHash = hashArgs(rawArgs);
     let result: ToolResult | undefined;
@@ -216,10 +278,10 @@ export class McpolyglotServer {
 
     try {
       // 1. scope check
-      this.security.hooks.checkScopes(def.name, def.scopes, this.scopes);
+      this.security.hooks.checkScopes(def.name, def.scopes, scopes);
 
       // 2. rate limit
-      release = await this.security.hooks.checkRateLimit(def.name, this.sessionId);
+      release = await this.security.hooks.checkRateLimit(def.name, caller.rateKey);
 
       // 3. timeout
       const ac = new AbortController();
@@ -227,7 +289,7 @@ export class McpolyglotServer {
 
       const ctx: ToolExecCtx = {
         sessionId: this.sessionId,
-        scopes: this.scopes,
+        scopes,
         signal: ac.signal,
         limits: this.security.defaultLimits,
         logger: this.logger,
@@ -292,7 +354,7 @@ export class McpolyglotServer {
         decision,
         ...(errorEntry ? { reason: errorEntry.message } : {}),
         argsHash,
-        scopes: Array.from(this.scopes),
+        scopes: Array.from(scopes),
         durationMs: Date.now() - started,
         rows: result?.metadata?.rows,
         truncated: result?.metadata?.truncated,
@@ -335,4 +397,11 @@ function makeNoopLogger(): NonNullable<McpolyglotServerOptions['logger']> {
     warn: () => {},
     error: () => {},
   };
+}
+
+function registerTool(map: Map<string, ToolDefinition>, tool: ToolDefinition): void {
+  if (map.has(tool.name)) {
+    throw new McpolyglotError('tool.duplicate', `Duplicate tool name: ${tool.name}`);
+  }
+  map.set(tool.name, tool);
 }

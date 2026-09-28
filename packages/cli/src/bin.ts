@@ -5,6 +5,7 @@ import { serveCommand } from './commands/serve.js';
 import { initCommand } from './commands/init.js';
 import { doctorCommand } from './commands/doctor.js';
 import { toolsCommand } from './commands/tools.js';
+import { tokenCreateCommand, tokenHashCommand } from './commands/token.js';
 
 const VERSION = '0.0.1';
 
@@ -72,6 +73,18 @@ program
   .option('-c, --config <path>', 'Path to config file', 'mcpolyglot.config.ts')
   .action(async (opts) => {
     await toolsCommand({ config: opts.config });
+  });
+
+const token = program.command('token').description('Manage per-agent HTTP bearer tokens.');
+token
+  .command('create <agentId>')
+  .description('Mint a new token; prints it once with its sha256 hash and a config snippet.')
+  .action((agentId: string) => tokenCreateCommand(agentId));
+token
+  .command('hash')
+  .description('Print the sha256 hash of a token read from stdin.')
+  .action(async () => {
+    await tokenHashCommand();
   });
 
 program.parseAsync(process.argv).catch((err: Error) => {

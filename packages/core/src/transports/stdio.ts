@@ -6,9 +6,9 @@ export class StdioTransport implements Transport {
   readonly kind = 'stdio' as const;
   private inner?: StdioServerTransport;
 
-  async start(server: Server): Promise<void> {
+  async start(createServer: () => Server): Promise<void> {
     this.inner = new StdioServerTransport();
-    await server.connect(this.inner);
+    await createServer().connect(this.inner);
   }
 
   async stop(): Promise<void> {
