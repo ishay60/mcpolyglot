@@ -21,7 +21,8 @@ export class RateLimiter {
     this.maxConcurrent = opts.maxConcurrent ?? 5;
   }
 
-  async check(toolName: string, sessionId: string): Promise<void> {
+  /** Take a token and a concurrency slot. Call the returned function when the call ends. */
+  async check(toolName: string, sessionId: string): Promise<() => void> {
     const key = `${sessionId}::${toolName}`;
     const now = Date.now();
     let bucket = this.buckets.get(key);
@@ -48,11 +49,12 @@ export class RateLimiter {
     bucket.tokens -= 1;
     bucket.inFlight += 1;
 
-    // best-effort release; the server pipeline currently does not signal completion,
-    // so we time-release each in-flight slot after the typical timeout window.
-    setTimeout(() => {
-      const b = this.buckets.get(key);
-      if (b && b.inFlight > 0) b.inFlight -= 1;
-    }, 30_000).unref?.();
+    let released = false;
+    const b = bucket;
+    return () => {
+      if (released) return;
+      released = true;
+      b.inFlight -= 1;
+    };
   }
 }

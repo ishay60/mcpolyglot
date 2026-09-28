@@ -60,3 +60,21 @@ describe('Redactor', () => {
     expect((out.result.content[0] as { text: string }).text).toContain('[REDACTED:iid]');
   });
 });
+
+describe('Redactor built-in patterns', () => {
+  it.each([
+    ['email', 'alice@example.com'],
+    ['jwt', 'eyJhbGciOi.eyJzdWIiOi.signaturepart'],
+    ['aws-access-key', 'AKIAIOSFODNN7EXAMPLE'],
+    ['github-token', 'ghp_' + 'a'.repeat(36)],
+    ['us-ssn', '123-45-6789'],
+    ['credit-card', '4111 1111 1111 1111'],
+  ])('%s', (name, secret) => {
+    const out = new Redactor().apply('demo', {
+      content: [{ type: 'json', data: { rows: [{ note: `value: ${secret}` }] } }],
+    });
+    const text = JSON.stringify(out.result.content);
+    expect(text).not.toContain(secret);
+    expect(text).toContain(`[REDACTED:${name}]`);
+  });
+});

@@ -47,7 +47,7 @@ The pipeline answers the three security failure modes that have shown up in real
 
 Phase `(2)` and `(6)` defend the host process itself — a runaway query or a 200-MB result can't pin the server.
 
-Phase `(8)` makes the whole thing reviewable: every call appends one JSONL line to `~/.mcpolyglot/audit.log`. We log enough to forensics (sha256-prefix of args, scopes, duration, row count, redaction count, error code) and **none** of the things you'd regret logging (no raw args, no result rows, no bearer tokens).
+Phase `(8)` makes the whole thing reviewable: every call emits one JSONL line (stdout/stderr by default, optionally a file and a webhook). We log enough to forensics (sha256-prefix of args, scopes, duration, row count, redaction count, error code) and **none** of the things you'd regret logging (no raw args, no result rows, no bearer tokens).
 
 ### Read-only at two layers
 

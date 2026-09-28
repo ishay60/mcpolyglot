@@ -141,18 +141,94 @@ d('sqlite end-to-end via SqlConnector', () => {
     expect(r.metadata?.truncated).toBe(true);
   });
 
-  it('rejects non-read SQL with forbidden.read_only', async () => {
+  it('policy rejects writes before they reach the DB, with a reason', async () => {
     const t = tools['sqlite.test.query']!;
     await expect(
       t.handler({ sql: 'UPDATE users SET name = ? WHERE id = ?', params: ['Eve', 1] }, ctx),
-    ).rejects.toMatchObject({ code: 'forbidden.read_only' });
+    ).rejects.toMatchObject({
+      code: 'forbidden.policy',
+      message: expect.stringContaining('read-only'),
+    });
   });
 
-  it('rejects DDL with forbidden.read_only', async () => {
+  it('policy rejects DDL with a reason', async () => {
     const t = tools['sqlite.test.query']!;
     await expect(t.handler({ sql: 'DROP TABLE users' }, ctx)).rejects.toMatchObject({
-      code: 'forbidden.read_only',
+      code: 'forbidden.policy',
+      message: expect.stringContaining('always blocked'),
     });
+  });
+
+  it('DB-level read-only still blocks a write the policy allows (defense in depth)', async () => {
+    const c = new SqlConnector({
+      id: 'sqlite.rw',
+      dialect: new SqliteDialect(dbPath),
+      policy: {
+        tables: { users: 'write' },
+        defaultAccess: 'read',
+        denyColumns: [],
+        maxWritesPerCall: 1,
+      },
+    });
+    await c.init({ logger: ctx.logger });
+    try {
+      const q = c.listPrimitiveTools().find((x) => x.name === 'sqlite.rw.query')!;
+      await expect(
+        q.handler({ sql: "UPDATE users SET name = 'Eve' WHERE id = 1" }, ctx),
+      ).rejects.toMatchObject({ code: 'forbidden.read_only' });
+    } finally {
+      await c.close();
+    }
+  });
+
+  it('dryRun returns the decision without executing', async () => {
+    const t = tools['sqlite.test.query']!;
+    const r = await t.handler({ sql: 'DROP TABLE users', dryRun: true }, ctx);
+    const data = r.content[0]?.data as {
+      dryRun: boolean;
+      decision: { allow: boolean; reason: string };
+    };
+    expect(data.dryRun).toBe(true);
+    expect(data.decision.allow).toBe(false);
+    // table still there
+    const ok = await t.handler({ sql: 'SELECT count(*) AS n FROM users' }, ctx);
+    expect((ok.content[0]?.data as { rows: Array<{ n: number }> }).rows[0]?.n).toBe(2);
+  });
+
+  it('policy hides denied columns and tables from list_tables and blocks querying them', async () => {
+    const c = new SqlConnector({
+      id: 'sqlite.p',
+      dialect: new SqliteDialect(dbPath),
+      policy: {
+        tables: { orders: 'none' },
+        defaultAccess: 'read',
+        denyColumns: ['users.password_hash'],
+        maxWritesPerCall: 1,
+        maxRows: 1,
+      },
+    });
+    await c.init({ logger: ctx.logger });
+    try {
+      const byName = Object.fromEntries(c.listPrimitiveTools().map((x) => [x.name, x]));
+      const list = await byName['sqlite.p.list_tables']!.handler({}, ctx);
+      const tables = list.content[0]?.data as Array<{ name: string; columns: { name: string }[] }>;
+      expect(tables.map((x) => x.name)).toEqual(['users']);
+      expect(tables[0]!.columns.map((x) => x.name)).not.toContain('password_hash');
+
+      const q = byName['sqlite.p.query']!;
+      await expect(
+        q.handler({ sql: 'SELECT password_hash FROM users' }, ctx),
+      ).rejects.toMatchObject({
+        code: 'forbidden.policy',
+      });
+      await expect(q.handler({ sql: 'SELECT id FROM orders' }, ctx)).rejects.toMatchObject({
+        code: 'forbidden.policy',
+      });
+      const r = await q.handler({ sql: 'SELECT email FROM users' }, ctx);
+      expect((r.content[0]?.data as { rowCount: number }).rowCount).toBe(1); // maxRows
+    } finally {
+      await c.close();
+    }
   });
 
   it('health() returns ok with a real latency reading', async () => {

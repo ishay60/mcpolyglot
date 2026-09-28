@@ -19,19 +19,41 @@ mcpolyglot's threat model assumes:
 
 These are enforced by the server, not requested of the model. Every tool call runs through the same fixed pipeline (`scope → rate limit → timeout → handler → redact → size cap → untrusted-wrap → audit`) in `McpolyglotServer.executeTool`; connectors cannot skip a phase.
 
-| The agent cannot…                        | Enforced by                                                                                                                                                     |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Write, update, delete, or run DDL        | Default scopes are `schema:read` + `tables:read`. No shipped tool requires `tables:write`. Each dialect also opens a read-only session (below).                 |
-| Slip a write past the SQL tool           | Postgres `BEGIN READ ONLY`; SQLite `query_only` pragma; MySQL AST gate + `SET TRANSACTION READ ONLY`. The database rejects it even if parsing is fooled.        |
-| Write through a Mongo pipeline           | Only `find` / `aggregate` are exposed; `$out` and `$merge` stages are rejected with `forbidden.read_only`.                                                      |
-| Call a tool its session wasn't granted   | Scope guard (phase 1) throws `ScopeError` before the handler runs. Raw queries need the explicit `query:raw` scope.                                             |
-| Hammer the database                      | Token-bucket rate limit per session per tool, plus a concurrency cap.                                                                                           |
-| Run a long query                         | Per-call timeout (default 10 s, max 60 s) aborts the handler.                                                                                                   |
-| Pull the whole table                     | Row cap (default 200, max 10 000) and byte cap (default 256 KiB); oversized results are truncated and flagged.                                                  |
-| Read secrets that happen to be in rows   | Redaction of emails, JWTs, AWS keys, GitHub tokens, SSNs, and card numbers, plus per-column deny lists (e.g. `public.users.password_hash`).                     |
-| Get DB content treated as instructions   | Every result is wrapped in `<mcpolyglot-data>` so the client/model sees it as untrusted data.                                                                   |
-| Act without a trace                      | Every call, including failures, appends a JSONL audit line (session, tool, scopes, args hash, duration, rows, redactions). Raw args and rows are never logged.  |
-| Reach the HTTP transport unauthenticated | Bearer token (auto-generated if unset) or OAuth JWT verified against the issuer's JWKS (`iss`, `aud`, `exp`). Binds to loopback by default and warns otherwise. |
+| The agent cannot…                        | Enforced by                                                                                                                                                                                            |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Write, update, delete, or run DDL        | Default scopes are `schema:read` + `tables:read`. No shipped tool requires `tables:write`. Each dialect also opens a read-only session (below).                                                        |
+| Slip a write past the SQL tool           | Postgres `BEGIN READ ONLY`; SQLite `query_only` pragma; MySQL AST gate + `SET TRANSACTION READ ONLY`. The database rejects it even if parsing is fooled.                                               |
+| Write through a Mongo pipeline           | Only `find` / `aggregate` are exposed; `$out` and `$merge` stages are rejected with `forbidden.read_only`.                                                                                             |
+| Call a tool its session wasn't granted   | Scope guard (phase 1) throws `ScopeError` before the handler runs. Raw queries need the explicit `query:raw` scope.                                                                                    |
+| Hammer the database                      | Token-bucket rate limit per session per tool, plus a concurrency cap.                                                                                                                                  |
+| Run a long query                         | Per-call timeout (default 10 s, max 60 s) aborts the handler.                                                                                                                                          |
+| Pull the whole table                     | Row cap (default 200, max 10 000) and byte cap (default 256 KiB); oversized results are truncated and flagged.                                                                                         |
+| Read secrets that happen to be in rows   | Redaction of emails, JWTs, AWS keys, GitHub tokens, SSNs, and card numbers, plus per-column deny lists (e.g. `public.users.password_hash`).                                                            |
+| Get DB content treated as instructions   | Every result is wrapped in `<mcpolyglot-data>` so the client/model sees it as untrusted data.                                                                                                          |
+| Act without a trace                      | Every call, including failures, appends a JSONL audit line (session, agent id, tool, allow/deny decision + reason, scopes, args hash, duration, rows, redactions). Raw args and rows are never logged. |
+| Reach the HTTP transport unauthenticated | Bearer token (auto-generated if unset) or OAuth JWT verified against the issuer's JWKS (`iss`, `aud`, `exp`). Binds to loopback by default and warns otherwise.                                        |
+
+### Where each claim is tested
+
+If a guardrail is claimed here or in the README, a test fails when it stops being true. CI runs all of them against real Postgres 16, MySQL 8.4 and SQLite, and fails if any test is skipped.
+
+| Claim                                                                               | Test                                                                                         |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| DDL, multi-statement, unparseable SQL always denied; `UPDATE`/`DELETE` need `WHERE` | `packages/connector-sql/src/__tests__/policy.test.ts`                                        |
+| Per-table `read`/`write`/`none`, most-restrictive match, no default write           | `policy.test.ts`                                                                             |
+| Denied columns blocked in any position and hidden from `list_tables`                | `policy.test.ts`, `dialects.integration.test.ts`, `sqlite.integration.test.ts`               |
+| DB-level read-only catches a write the policy allowed                               | `dialects.integration.test.ts` (Postgres, MySQL), `sqlite.integration.test.ts`               |
+| Dry-run never executes                                                              | `sqlite.integration.test.ts`                                                                 |
+| Mongo `$out` / `$merge` rejected                                                    | `packages/connector-mongo/src/__tests__/aggregate-gate.test.ts`                              |
+| Scope check runs before the handler                                                 | `packages/core/src/__tests__/pipeline.test.ts`                                               |
+| Per-call timeout cuts off a hung handler                                            | `pipeline.test.ts`, and the DB-side timeout in `dialects.integration.test.ts`                |
+| Rate limit and concurrency cap; slot released on every outcome                      | `packages/security/src/__tests__/rate-limiter.test.ts`, `pipeline.test.ts`                   |
+| Row cap and byte cap truncate and flag                                              | `sqlite.integration.test.ts`, `dialects.integration.test.ts`, `wrap.test.ts`                 |
+| Each built-in redaction pattern                                                     | `redactor.test.ts`                                                                           |
+| Results wrapped as untrusted data                                                   | `wrap.test.ts`                                                                               |
+| Audit: every call, allow/deny/error, agent id, no raw args or rows, scrubbed text   | `pipeline.test.ts`, `packages/security/src/__tests__/audit.test.ts`                          |
+| HTTP: bearer required, OAuth `iss`/`aud`/`exp`/key checks, loopback default         | `streamable-http.test.ts`, `oauth.test.ts`, `packages/config/src/__tests__/defaults.test.ts` |
+| Literal credentials flagged                                                         | `secrets.test.ts`                                                                            |
 
 What this does **not** cover: prompt injection can still steer the model into making allowed read calls it shouldn't, and data the agent is allowed to read can leave through the client. Scope the database role and the granted scopes to what the agent actually needs.
 
@@ -41,10 +63,11 @@ What this does **not** cover: prompt injection can still steer the model into ma
 - Bind to `127.0.0.1` for single-user setups.
 - Use a database role with read-only permissions even though mcpolyglot enforces read-only at the protocol level.
 - Enable `tables:write` scope only on isolated dev databases.
-- Review `~/.mcpolyglot/audit.log` periodically.
+- Ship the audit log somewhere durable (`audit.path` or `audit.webhookUrl`) and review it periodically.
 
 ## Known limitations (alpha)
 
 - The current rate limiter is in-process only.
+- A timed-out call returns to the agent at the limit, but the abandoned query keeps running until the database's own timeout stops it. SQLite (`better-sqlite3`) is synchronous and blocks the process until the query finishes, so a slow SQLite query cannot be interrupted.
 - The HTTP transport defaults to a shared bearer token. OAuth mode verifies JWTs (signature, `iss`, `aud`, `exp`) but does not map token claims to scopes yet.
 - Per-table write tools (Wave 3) will require explicit scope opt-in and do not yet support row-level filters.

@@ -24,8 +24,11 @@ import { McpolyglotError, TimeoutError } from './errors.js';
 export interface SecurityHooks {
   /** Phase 1 — reject if granted scopes don't cover the tool's required scopes. */
   checkScopes(toolName: string, required: readonly Scope[], granted: ReadonlySet<Scope>): void;
-  /** Phase 2 — token-bucket + concurrency gate. Throws `RateLimitError` on violation. */
-  checkRateLimit(toolName: string, sessionId: string): Promise<void>;
+  /**
+   * Phase 2 — token-bucket + concurrency gate. Throws `RateLimitError` on violation. May
+   * return a release function; the server calls it when the call finishes.
+   */
+  checkRateLimit(toolName: string, sessionId: string): Promise<void | (() => void)>;
   /** Phase 5 — strip secrets, drop denied columns. Returns the new result and the redaction count. */
   redact(toolName: string, result: ToolResult): { result: ToolResult; redactionsApplied: number };
   /** Phase 6 — hard cap on serialized output bytes. Truncates and flips `metadata.truncated`. */
@@ -51,7 +54,13 @@ export interface AuditEntry {
   /** ISO-8601 UTC timestamp. */
   ts: string;
   sessionId: string;
+  /** `x-mcpolyglot-agent` header (HTTP), else the MCP client's `clientInfo.name`. */
+  agentId?: string;
   tool: string;
+  /** `deny` = rejected by policy/scope/rate limit/timeout; `error` = anything else that failed. */
+  decision: 'allow' | 'deny' | 'error';
+  /** Why the call was denied or failed. */
+  reason?: string;
   /** First 16 chars of `sha256(JSON.stringify(args))`. Enough for forensics, not for reconstruction. */
   argsHash: string;
   scopes: Scope[];
@@ -138,12 +147,15 @@ export class McpolyglotServer {
       })),
     }));
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    this.server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
       const def = this.tools.get(req.params.name);
       if (!def) {
         throw new McpolyglotError('tool.not_found', `Unknown tool: ${req.params.name}`);
       }
-      const internal = await this.executeTool(def, req.params.arguments ?? {});
+      const header = extra.requestInfo?.headers['x-mcpolyglot-agent'];
+      const agentId =
+        (Array.isArray(header) ? header[0] : header) ?? this.server.getClientVersion()?.name;
+      const internal = await this.executeTool(def, req.params.arguments ?? {}, agentId);
       return toMcpResult(internal);
     });
   }
@@ -190,18 +202,24 @@ export class McpolyglotServer {
    * redaction → size cap → untrusted-wrap → audit log → response.
    * Connectors cannot bypass.
    */
-  private async executeTool(def: ToolDefinition, rawArgs: unknown): Promise<ToolResult> {
+  private async executeTool(
+    def: ToolDefinition,
+    rawArgs: unknown,
+    agentId?: string,
+  ): Promise<ToolResult> {
     const started = Date.now();
     const argsHash = hashArgs(rawArgs);
     let result: ToolResult | undefined;
     let errorEntry: AuditEntry['error'];
+    let decision: AuditEntry['decision'] = 'allow';
+    let release: void | (() => void) = undefined;
 
     try {
       // 1. scope check
       this.security.hooks.checkScopes(def.name, def.scopes, this.scopes);
 
       // 2. rate limit
-      await this.security.hooks.checkRateLimit(def.name, this.sessionId);
+      release = await this.security.hooks.checkRateLimit(def.name, this.sessionId);
 
       // 3. timeout
       const ac = new AbortController();
@@ -215,14 +233,18 @@ export class McpolyglotServer {
         logger: this.logger,
       };
 
+      // Race the handler against the timer: a handler that ignores `signal` (a sync driver,
+      // a hung socket) must still not hold the call open past the limit.
+      const timedOut = new Promise<never>((_, reject) =>
+        ac.signal.addEventListener('abort', () =>
+          reject(new TimeoutError(`Tool ${def.name} exceeded ${ctx.limits.timeoutMs}ms`)),
+        ),
+      );
       try {
         const parsed = def.inputSchema.parse(rawArgs);
-        result = await def.handler(parsed, ctx);
+        result = await Promise.race([def.handler(parsed, ctx), timedOut]);
       } finally {
         clearTimeout(timer);
-        if (ac.signal.aborted && !result) {
-          throw new TimeoutError(`Tool ${def.name} exceeded ${ctx.limits.timeoutMs}ms`);
-        }
       }
 
       // 4. redaction
@@ -249,6 +271,7 @@ export class McpolyglotServer {
     } catch (err) {
       const e = err as Error & { code?: string };
       errorEntry = { code: e.code ?? 'internal_error', message: e.message };
+      decision = err instanceof McpolyglotError && isPolicyRejection(err.code) ? 'deny' : 'error';
       // Policy rejections (scope, read-only, rate limit, timeout) are tool errors the model
       // can read and correct, not protocol failures.
       if (err instanceof McpolyglotError && isPolicyRejection(err.code)) {
@@ -260,10 +283,14 @@ export class McpolyglotServer {
       }
       throw err;
     } finally {
+      release?.();
       await this.security.hooks.audit({
         ts: new Date().toISOString(),
         sessionId: this.sessionId,
+        ...(agentId ? { agentId } : {}),
         tool: def.name,
+        decision,
+        ...(errorEntry ? { reason: errorEntry.message } : {}),
         argsHash,
         scopes: Array.from(this.scopes),
         durationMs: Date.now() - started,

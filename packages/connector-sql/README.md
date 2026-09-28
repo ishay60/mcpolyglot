@@ -22,6 +22,36 @@ For every SQL source mcpolyglot generates:
 
 The AST gate matters on MySQL because `SET TRANSACTION READ ONLY` is partially honored — the parser refuses anything whose top-level statement isn't a read.
 
+## Policy layer
+
+Every `query` call is parsed (`node-sql-parser`, per-dialect grammar) and checked against the source's `policy` **before** it reaches the database. Denials come back as `forbidden.policy` with a specific reason.
+
+```ts
+policy: {
+  tables: { users: 'read', orders: 'write', 'public.secrets': 'none' },
+  defaultAccess: 'read',            // 'read' | 'none' — never 'write'
+  denyColumns: ['users.password_hash', '*.ssn'],
+  maxRows: 100,                     // min'd with limits.rowCap
+  statementTimeoutMs: 5000,         // min'd with limits.timeoutMs
+  maxWritesPerCall: 1,              // reserved for the write tool
+}
+```
+
+Rules (each has a case in `src/__tests__/policy.test.ts`):
+
+- Unparseable SQL is denied. So is more than one statement per call.
+- Anything other than `SELECT`/`INSERT`/`UPDATE`/`DELETE` is always denied: DDL, `GRANT`, `TRUNCATE`, `SET`, and so on.
+- `UPDATE`/`DELETE` without `WHERE` is denied.
+- Every table referenced anywhere (joins, subqueries, `INSERT … SELECT`) is checked. `none` tables are denied and hidden from `list_tables`. Writes need an explicit `write` entry.
+- When several policy keys could match a table (`users` and `public.users`), the most restrictive wins.
+- A denied column is blocked wherever it appears: select list, `WHERE`, subqueries, aliased tables. `SELECT *` is denied if it could expose one. With a `*.col` rule, that means every `SELECT *`. Denied columns are also stripped from `list_tables`/`describe_table`.
+- `dryRun: true` returns `{ decision }` without executing.
+
+Known limits:
+
+- The policy sees tables and columns, not functions, so `SELECT pg_read_file(...)` passes the classifier. Enforce that with the DB role's privileges.
+- Writes that pass policy are still rejected, because the connection is read-only at the DB level. This is covered by a test. The write tool (with `maxWritesPerCall`) arrives with the DB-side work.
+
 ## Drivers are optional deps
 
 The dialect drivers (`pg`, `mysql2`, `better-sqlite3`) are declared as `optionalDependencies`. Install only what you use.

@@ -41,8 +41,8 @@ export function defaultSecurityHooks(opts: DefaultHookOptions = {}): SecurityHoo
     checkScopes(toolName: string, required: readonly Scope[], granted: ReadonlySet<Scope>) {
       guard.check(toolName, required, granted);
     },
-    async checkRateLimit(toolName: string, sessionId: string) {
-      await limiter.check(toolName, sessionId);
+    checkRateLimit(toolName: string, sessionId: string) {
+      return limiter.check(toolName, sessionId);
     },
     redact(toolName: string, result: ToolResult) {
       return redactor.apply(toolName, result);
@@ -70,7 +70,17 @@ export function composeHooks(...hooks: SecurityHooks[]): SecurityHooks {
       for (const h of hooks) h.checkScopes(toolName, required, granted);
     },
     async checkRateLimit(toolName, sessionId) {
-      for (const h of hooks) await h.checkRateLimit(toolName, sessionId);
+      const releases: Array<() => void> = [];
+      try {
+        for (const h of hooks) {
+          const r = await h.checkRateLimit(toolName, sessionId);
+          if (r) releases.push(r);
+        }
+      } catch (err) {
+        for (const r of releases) r();
+        throw err;
+      }
+      return () => releases.forEach((r) => r());
     },
     redact(toolName, result) {
       let acc = result;

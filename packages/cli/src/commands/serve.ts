@@ -89,7 +89,12 @@ export async function serveCommand(opts: ServeOptions): Promise<void> {
   await server.start(transport);
 
   ready(Date.now() - startedAt);
-  footerBar(['Ctrl+C to stop', 'audit: ~/.mcpolyglot/audit.log']);
+  const auditSinks = [
+    cfg.audit.console && (cfg.transport.kind === 'stdio' ? 'stderr' : 'stdout'),
+    cfg.audit.path,
+    cfg.audit.webhookUrl && 'webhook',
+  ].filter(Boolean);
+  footerBar(['Ctrl+C to stop', `audit: ${auditSinks.join(', ') || 'off'}`]);
 
   const shutdown = async () => {
     process.stderr.write(pc.dim('\n  shutting down…\n'));

@@ -41,6 +41,9 @@ jobs:
       - name: Format check
         run: pnpm format:check
 
+      - name: Lint
+        run: pnpm lint
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -50,4 +53,56 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-# integration job is enabled in Wave 2 once testcontainers fixtures land in @mcpolyglot/testkit.
+  integration:
+    name: Integration (Postgres + MySQL + SQLite) & coverage
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -ptest" --health-interval 5s --health-retries 30
+    env:
+      PG_TEST_URL: postgres://postgres:test@localhost:5432/postgres
+      MYSQL_TEST_URL: mysql://root:test@localhost:3306/test
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # One run over every package with both DB URLs set, so nothing is skipped.
+      - name: All tests against real databases, with coverage
+        run: pnpm test:coverage
+
+      - name: Fail if any test was skipped
+        run: |
+          pnpm exec vitest run --reporter=json --outputFile=results.json >/dev/null
+          node -e "const r=require('./results.json');if(r.numPendingTests>0){console.error(r.numPendingTests+' skipped');process.exit(1)}"
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          node -e "const t=require('./coverage/coverage-summary.json').total;console.log('| metric | % |\n|---|---|\n'+['lines','branches','functions'].map(k=>'| '+k+' | '+t[k].pct+' |').join('\n'))" >> "$GITHUB_STEP_SUMMARY"
