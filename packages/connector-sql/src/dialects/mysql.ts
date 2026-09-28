@@ -1,11 +1,13 @@
 import sqlParser from 'node-sql-parser';
 import type { ColumnSchema, TableSchema } from '@mcpolyglot/core';
 import { McpolyglotError } from '@mcpolyglot/core';
-import type { SqlDialect, SqlQueryResult } from '../dialect.js';
+import { tooManyRows, type PoolOptions, type SqlDialect, type SqlQueryResult } from '../dialect.js';
 
 const { Parser } = sqlParser;
 
 type MysqlPool = import('mysql2/promise').Pool;
+
+type CoreConnection = { query(sql: string, cb: (err: unknown) => void): void; destroy(): void };
 
 const READ_OPS = new Set(['select', 'show', 'describe', 'desc', 'explain', 'with']);
 
@@ -14,15 +16,30 @@ export class MysqlDialect implements SqlDialect {
   private pool?: MysqlPool;
   private readonly parser = new Parser();
 
-  constructor(private readonly connectionString: string) {}
+  constructor(
+    private readonly connectionString: string,
+    private readonly poolOpts: PoolOptions = {},
+  ) {}
 
-  async connect(): Promise<void> {
+  async connect({ writable = false }: { writable?: boolean } = {}): Promise<void> {
     const mysql = await loadMysql();
     this.pool = mysql.createPool({
       uri: this.connectionString,
-      connectionLimit: 4,
+      connectionLimit: this.poolOpts.max ?? 4,
+      ...(this.poolOpts.idleTimeoutMs ? { idleTimeout: this.poolOpts.idleTimeoutMs } : {}),
       enableKeepAlive: true,
     });
+    if (!writable) {
+      // Session-wide: every later transaction on this connection is read-only. If the SET
+      // fails, drop the connection rather than hand out a writable one.
+      this.pool.on('connection', (promiseTyped) => {
+        // The event hands over the callback-style core connection despite the promise typings.
+        const conn = promiseTyped as unknown as CoreConnection;
+        conn.query('SET SESSION TRANSACTION READ ONLY', (err: unknown) => {
+          if (err) conn.destroy();
+        });
+      });
+    }
     const c = await this.pool.getConnection();
     try {
       await c.query('SELECT 1');
@@ -98,9 +115,8 @@ export class MysqlDialect implements SqlDialect {
 
     const c = await this.requirePool().getConnection();
     try {
-      // 2. Session read-only.
-      await c.query('SET SESSION TRANSACTION READ ONLY');
-      await c.query('START TRANSACTION');
+      // 2. Transaction read-only (not SESSION: a writable pool reuses this connection for writes).
+      await c.query('START TRANSACTION READ ONLY');
       try {
         const [rows, fields] = (await c.query({
           sql: this.injectMaxExecutionTime(sql, opts.timeoutMs),
@@ -115,6 +131,36 @@ export class MysqlDialect implements SqlDialect {
       } finally {
         await c.query('ROLLBACK').catch(() => {});
       }
+    } finally {
+      c.release();
+    }
+  }
+
+  async runWrite(
+    sql: string,
+    params: ReadonlyArray<unknown>,
+    opts: { maxRowsAffected: number; timeoutMs: number; signal?: AbortSignal },
+  ): Promise<{ rowsAffected: number }> {
+    const c = await this.requirePool().getConnection();
+    try {
+      await c.query('START TRANSACTION');
+      // MAX_EXECUTION_TIME only covers SELECT, so DML gets mysql2's client-side timeout.
+      const [res] = (await c.query({
+        sql,
+        values: params as unknown[],
+        timeout: opts.timeoutMs,
+      })) as unknown as [{ affectedRows: number }];
+      const n = res.affectedRows;
+      if (n > opts.maxRowsAffected) throw tooManyRows(n, opts.maxRowsAffected);
+      await c.query('COMMIT');
+      return { rowsAffected: n };
+    } catch (err) {
+      await c.query('ROLLBACK').catch(() => {});
+      // 1792 = ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION
+      if ((err as { errno?: number }).errno === 1792) {
+        throw new McpolyglotError('forbidden.read_only', (err as Error).message);
+      }
+      throw err;
     } finally {
       c.release();
     }

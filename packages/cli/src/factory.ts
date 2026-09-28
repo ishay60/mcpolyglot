@@ -94,29 +94,22 @@ export async function buildServerFromConfig(
 
 async function buildConnector(src: SourceConfig): Promise<Connector> {
   switch (src.kind) {
-    case 'postgres': {
-      const url = await resolveSecrets(src.url);
-      return new SqlConnector({
-        id: src.id,
-        dialect: new PostgresDialect(url),
-        policy: sqlPolicy(src),
-      });
-    }
-    case 'sqlite': {
-      const url = await resolveSecrets(src.url);
-      return new SqlConnector({
-        id: src.id,
-        dialect: new SqliteDialect(url),
-        policy: sqlPolicy(src),
-      });
-    }
+    case 'postgres':
+    case 'sqlite':
     case 'mysql':
     case 'mariadb': {
       const url = await resolveSecrets(src.url);
+      const dialect =
+        src.kind === 'postgres'
+          ? new PostgresDialect(url, src.pool)
+          : src.kind === 'sqlite'
+            ? new SqliteDialect(url)
+            : new MysqlDialect(url, src.pool);
       return new SqlConnector({
         id: src.id,
-        dialect: new MysqlDialect(url),
+        dialect,
         policy: sqlPolicy(src),
+        ...(src.maxConcurrentQueries ? { maxConcurrentQueries: src.maxConcurrentQueries } : {}),
       });
     }
     case 'mongo': {

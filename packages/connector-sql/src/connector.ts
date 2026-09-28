@@ -7,7 +7,7 @@ import type {
   TableSchema,
   ToolDefinition,
 } from '@mcpolyglot/core';
-import { McpolyglotError } from '@mcpolyglot/core';
+import { McpolyglotError, RateLimitError } from '@mcpolyglot/core';
 import type { SqlDialect } from './dialect.js';
 import { classify, isColumnDenied, PolicySchema, tableAccess, type Policy } from './policy.js';
 
@@ -17,8 +17,13 @@ export interface SqlConnectorOptions {
   id: string;
   dialect: SqlDialect;
   /** Access policy. Omitted = every table readable, no writes, no column denies. */
-  policy?: Policy;
+  policy?: z.input<typeof PolicySchema>;
+  /** Reject (`rate_limited`) query/execute calls beyond this many in flight. Omitted = no cap. */
+  maxConcurrentQueries?: number;
 }
+
+const Params = z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional();
+const EXECUTE_STATEMENTS = new Set(['insert', 'update', 'delete']);
 
 export class SqlConnector implements Connector {
   readonly id: string;
@@ -27,16 +32,30 @@ export class SqlConnector implements Connector {
   private readonly policy: Policy;
   private logger?: ConnectorInitCtx['logger'];
   private cachedTables?: TableSchema[];
+  private readonly maxConcurrent: number;
+  private inFlight = 0;
+  // ponytail: in-memory, single process, lost on restart. Move to the DB (a keys table in the
+  // same transaction) if replays must survive restarts or span replicas.
+  private readonly idempotency = new Map<
+    string,
+    { fingerprint: string; expires: number; result: Promise<unknown> }
+  >();
 
   constructor(opts: SqlConnectorOptions) {
     this.id = opts.id;
     this.dialect = opts.dialect;
     this.policy = PolicySchema.parse(opts.policy ?? {});
+    this.maxConcurrent = opts.maxConcurrentQueries ?? Infinity;
+  }
+
+  /** True when the policy grants `write` on at least one table. */
+  get writable(): boolean {
+    return Object.values(this.policy.tables).includes('write');
   }
 
   async init(ctx: ConnectorInitCtx): Promise<void> {
     this.logger = ctx.logger;
-    await this.dialect.connect();
+    await this.dialect.connect({ writable: this.writable });
     this.logger.info('connector.sql.connected', { id: this.id, dialect: this.dialect.kind });
   }
 
@@ -106,7 +125,7 @@ export class SqlConnector implements Connector {
               .string()
               .min(1)
               .describe('SQL query string. Read-only — INSERT/UPDATE/DELETE/DDL will be rejected.'),
-            params: z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+            params: Params,
             limit: z.number().int().positive().max(1000).optional(),
             dryRun: z
               .boolean()
@@ -131,18 +150,123 @@ export class SqlConnector implements Connector {
             ctx.limits.rowCap,
             this.policy.maxRows ?? Infinity,
           );
-          const result = await this.dialect.runReadOnly(sql, params ?? [], {
-            rowCap,
-            timeoutMs: Math.min(ctx.limits.timeoutMs, this.policy.statementTimeoutMs ?? Infinity),
-            signal: ctx.signal,
-          });
+          const result = await this.limited(() =>
+            this.dialect.runReadOnly(sql, params ?? [], {
+              rowCap,
+              timeoutMs: this.timeoutMs(ctx),
+              signal: ctx.signal,
+            }),
+          );
           return {
             content: [{ type: 'json', data: result }],
             metadata: { rows: result.rowCount, truncated: result.truncated },
           };
         },
       },
+      ...(this.writable ? [this.executeTool()] : []),
     ];
+  }
+
+  private executeTool(): ToolDefinition {
+    const id = this.id;
+    return {
+      name: `${id}.execute`,
+      description: `Run one INSERT/UPDATE/DELETE against the ${id} database, in a transaction. Rolled back if it changes more than ${this.policy.maxWritesPerCall} row(s).`,
+      inputSchema: z
+        .object({
+          sql: z.string().min(1).describe('One INSERT, UPDATE, or DELETE. Parameterized.'),
+          params: Params,
+          dryRun: z.boolean().optional().describe('Return the policy decision without executing.'),
+          idempotencyKey: z
+            .string()
+            .min(1)
+            .max(200)
+            .optional()
+            .describe(
+              `Retrying with the same key within ${this.policy.idempotencyWindowMinutes} min returns the first result instead of writing again.`,
+            ),
+        })
+        .strict(),
+      scopes: ['tables:write'],
+      readOnly: false,
+      handler: async ({ sql, params, dryRun, idempotencyKey }, ctx) => {
+        let decision = classify(sql, this.policy, this.dialect.kind);
+        if (decision.allow && !EXECUTE_STATEMENTS.has(decision.statement ?? '')) {
+          decision = {
+            ...decision,
+            allow: false,
+            reason: `execute only runs INSERT/UPDATE/DELETE; got ${decision.statement?.toUpperCase()}. Use query for reads.`,
+          };
+        }
+        if (dryRun) return { content: [{ type: 'json', data: { dryRun: true, decision } }] };
+        if (!decision.allow) {
+          throw new McpolyglotError('forbidden.policy', decision.reason, {
+            tables: decision.tables,
+          });
+        }
+
+        const run = () =>
+          this.limited(() =>
+            this.dialect.runWrite(sql, params ?? [], {
+              maxRowsAffected: this.policy.maxWritesPerCall,
+              timeoutMs: this.timeoutMs(ctx),
+              signal: ctx.signal,
+            }),
+          );
+        const { rowsAffected } = idempotencyKey
+          ? ((await this.idempotent(idempotencyKey, JSON.stringify([sql, params ?? []]), run)) as {
+              rowsAffected: number;
+            })
+          : await run();
+        return {
+          content: [{ type: 'json', data: { rowsAffected } }],
+          metadata: { rows: rowsAffected },
+        };
+      },
+    };
+  }
+
+  /** Replay a same-key call within the window; refuse a same-key call with different args. */
+  private idempotent(key: string, fingerprint: string, run: () => Promise<unknown>) {
+    const now = Date.now();
+    for (const [k, v] of this.idempotency) if (v.expires <= now) this.idempotency.delete(k);
+    const prev = this.idempotency.get(key);
+    if (prev) {
+      if (prev.fingerprint !== fingerprint) {
+        throw new McpolyglotError(
+          'invalid_argument',
+          `idempotencyKey "${key}" was already used with different sql/params.`,
+        );
+      }
+      return prev.result;
+    }
+    // Store the promise, not the value, so a concurrent retry waits for the first call.
+    const result = run();
+    this.idempotency.set(key, {
+      fingerprint,
+      expires: now + this.policy.idempotencyWindowMinutes * 60_000,
+      result,
+    });
+    result.catch(() => this.idempotency.delete(key)); // failures aren't cached; retry may run
+    return result;
+  }
+
+  private async limited<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.inFlight >= this.maxConcurrent) {
+      throw new RateLimitError(
+        `${this.id}: ${this.maxConcurrent} queries already in flight (maxConcurrentQueries).`,
+      );
+    }
+    this.inFlight++;
+    try {
+      return await fn();
+    } finally {
+      this.inFlight--;
+    }
+  }
+
+  private timeoutMs(ctx: { limits: { timeoutMs: number } }): number {
+    return Math.min(ctx.limits.timeoutMs, this.policy.statementTimeoutMs ?? Infinity);
   }
 
   generatePerEntityTools(_cfg: PerEntityConfig): ToolDefinition[] {
