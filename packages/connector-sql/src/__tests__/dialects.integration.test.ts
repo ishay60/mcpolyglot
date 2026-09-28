@@ -4,7 +4,7 @@ import { SqlConnector } from '../connector.js';
 import type { SqlDialect } from '../dialect.js';
 import { PostgresDialect } from '../dialects/postgres.js';
 import { MysqlDialect } from '../dialects/mysql.js';
-import type { Policy } from '../policy.js';
+import type { SqlConnectorOptions } from '../connector.js';
 
 // Real servers, same assertions for each dialect. Each block runs only when its URL is set
 // (CI sets both via service containers):
@@ -72,7 +72,7 @@ for (const t of targets) {
   describe.skipIf(!t.url)(`${t.name} end-to-end`, () => {
     const connectors: SqlConnector[] = [];
 
-    async function open(policy?: Policy) {
+    async function open(policy?: SqlConnectorOptions['policy']) {
       const c = new SqlConnector({
         id: t.name,
         dialect: t.make(t.url!),
@@ -163,6 +163,77 @@ for (const t of targets) {
         .handler({ sql: t.sleep }, { ...ctx, limits: { ...ctx.limits, timeoutMs: 300 } })
         .catch(() => {}); // pg errors; MySQL's SLEEP returns early instead
       expect(Date.now() - t0).toBeLessThan(2_000);
+    });
+
+    const writePolicy = { tables: { orders: 'write' as const }, maxWritesPerCall: 1 };
+    const count = async (where: string) => {
+      const { query } = await open();
+      const r = await query!.handler(
+        { sql: `SELECT count(*) AS n FROM orders WHERE ${where}` },
+        ctx,
+      );
+      return Number((r.content[0]!.data as { rows: Array<{ n: unknown }> }).rows[0]!.n);
+    };
+
+    it('read-only connection refuses a raw write even when the tool layer is bypassed', async () => {
+      const dialect = t.make(t.url!);
+      await dialect.connect(); // no policy writes -> read-only connection
+      try {
+        await expect(
+          dialect.runWrite('UPDATE orders SET total_cents = 0 WHERE id = 1', [], {
+            maxRowsAffected: 10,
+            timeoutMs: 5_000,
+          }),
+        ).rejects.toMatchObject({ code: 'forbidden.read_only' });
+      } finally {
+        await dialect.close();
+      }
+      expect(await count('total_cents = 0')).toBe(0);
+    });
+
+    it('execute is registered only when a table is writable', async () => {
+      expect((await open()).execute).toBeUndefined();
+      expect((await open(writePolicy)).execute).toBeDefined();
+    });
+
+    it('execute over maxWritesPerCall rolls back', async () => {
+      const { execute } = await open(writePolicy);
+      await expect(
+        execute!.handler({ sql: 'UPDATE orders SET total_cents = 0 WHERE user_id = 1' }, ctx),
+      ).rejects.toMatchObject({ code: 'forbidden.policy' });
+      expect(await count('total_cents = 0')).toBe(0);
+      const ok = await execute!.handler(
+        { sql: `UPDATE orders SET total_cents = 1 WHERE id = ${t.param}`, params: [3] },
+        ctx,
+      );
+      expect(ok.metadata?.rows).toBe(1);
+    });
+
+    it('idempotencyKey replays without re-executing; reuse with different args errors', async () => {
+      const { execute } = await open(writePolicy);
+      const args = { sql: `INSERT INTO orders VALUES (${t.param}, 2, 7)`, params: [50] };
+      await execute!.handler({ ...args, idempotencyKey: 'k' }, ctx);
+      // A real re-run would hit the primary key and throw.
+      const again = await execute!.handler({ ...args, idempotencyKey: 'k' }, ctx);
+      expect(again.metadata?.rows).toBe(1);
+      expect(await count('id = 50')).toBe(1);
+      await expect(
+        execute!.handler({ ...args, params: [51], idempotencyKey: 'k' }, ctx),
+      ).rejects.toMatchObject({ code: 'invalid_argument' });
+      expect(await count('id = 51')).toBe(0);
+    });
+
+    it('maxConcurrentQueries rejects the call over the cap', async () => {
+      const c = new SqlConnector({ id: 'cap', dialect: t.make(t.url!), maxConcurrentQueries: 1 });
+      await c.init({ logger });
+      connectors.push(c);
+      const query = c.listPrimitiveTools().find((x) => x.name === 'cap.query')!;
+      const [a, b] = await Promise.allSettled([
+        query.handler({ sql: 'SELECT 1 AS x' }, ctx),
+        query.handler({ sql: 'SELECT 1 AS x' }, ctx),
+      ]);
+      expect(a!.status).toBe('fulfilled');
+      expect(b).toMatchObject({ status: 'rejected', reason: { code: 'rate_limited' } });
     });
   });
 }
