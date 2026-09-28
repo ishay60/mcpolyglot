@@ -38,8 +38,10 @@ program
   .command('init')
   .description('Interactively scaffold an mcpolyglot.config.ts in the current directory.')
   .option('--cwd <dir>', 'Directory to scaffold into', process.cwd())
-  .action(async (opts) => {
-    await initCommand({ cwd: opts.cwd });
+  .argument('[url]', 'DB URL or SQLite path: introspect it and generate a read-only policy')
+  .option('--id <id>', 'Source id (with a URL)')
+  .action(async (url: string | undefined, opts) => {
+    await initCommand({ cwd: opts.cwd, url, id: opts.id });
   });
 
 program
