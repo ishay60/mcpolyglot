@@ -1,6 +1,7 @@
 $ mcpolyglot --help
 
-  ▲  mcpolyglot  v0.0.1
+
+  ▲  mcpolyglot   MCP   v0.0.1
      one config, every database your agent needs
 
 Usage: mcpolyglot [options] [command]
@@ -12,13 +13,14 @@ Options:
   -h, --help        display help
 
 Commands:
-  init [options]    Interactively scaffold an mcpolyglot.config.ts in the current
-                    directory.
+  init [options]    Interactively scaffold an mcpolyglot.config.ts in the
+                    current directory.
   serve [options]   Start the mcpolyglot MCP server.
-  doctor [options]  Validate config, resolve secrets, ping each source, and
-                    list generated tools.
+  doctor [options]  Validate config, resolve secrets, ping each source, and list
+                    generated tools.
   tools [options]   List all tools that mcpolyglot would expose for the current
                     config.
   help [command]    display help for command
 
   docs: github.com/ishay60/mcpolyglot
+

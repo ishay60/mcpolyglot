@@ -12,7 +12,7 @@ import {
   type ToolResult,
   DEFAULT_SCOPES,
 } from './tool.js';
-import { McpolyglotError, ScopeError, TimeoutError } from './errors.js';
+import { McpolyglotError, TimeoutError } from './errors.js';
 
 /**
  * The non-bypassable pipeline that wraps every tool call. Implementations live in
@@ -249,9 +249,11 @@ export class McpolyglotServer {
     } catch (err) {
       const e = err as Error & { code?: string };
       errorEntry = { code: e.code ?? 'internal_error', message: e.message };
-      if (err instanceof ScopeError || err instanceof TimeoutError) {
+      // Policy rejections (scope, read-only, rate limit, timeout) are tool errors the model
+      // can read and correct, not protocol failures.
+      if (err instanceof McpolyglotError && isPolicyRejection(err.code)) {
         return {
-          content: [{ type: 'text', text: e.message }],
+          content: [{ type: 'text', text: `${err.code}: ${e.message}` }],
           isError: true,
           metadata: { durationMs: Date.now() - started },
         };
@@ -272,6 +274,10 @@ export class McpolyglotServer {
       });
     }
   }
+}
+
+function isPolicyRejection(code: string): boolean {
+  return code.startsWith('forbidden.') || code === 'rate_limited' || code === 'timeout';
 }
 
 function hashArgs(args: unknown): string {

@@ -37,6 +37,20 @@ describe('Redactor', () => {
     expect(out.redactionsApplied).toBeGreaterThanOrEqual(1);
   });
 
+  it('drops denied column names from a query result column list', () => {
+    const r = new Redactor({ denyColumns: [{ path: 'users.password_hash' }] });
+    const out = r.apply('demo', {
+      content: [
+        {
+          type: 'json',
+          data: { columns: ['id', 'password_hash'], rows: [{ id: 1, password_hash: 'hunter2' }] },
+        },
+      ],
+    });
+    const data = (out.result.content[0] as { data: { columns: string[] } }).data;
+    expect(data.columns).toEqual(['id']);
+  });
+
   it('honors custom regex rules', () => {
     const r = new Redactor({
       customRules: [{ name: 'iid', regex: /IID-\w+/g }],

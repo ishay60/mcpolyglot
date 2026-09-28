@@ -115,6 +115,12 @@ export class PostgresDialect implements SqlDialect {
           return obj;
         });
         return { columns: fields, rows, rowCount: rows.length, truncated };
+      } catch (err) {
+        // 25006 = read_only_sql_transaction: the DB-level guard caught a write.
+        if ((err as { code?: string }).code === '25006') {
+          throw new McpolyglotError('forbidden.read_only', (err as Error).message);
+        }
+        throw err;
       } finally {
         opts.signal?.removeEventListener('abort', onAbort);
         await c.query('ROLLBACK').catch(() => {});

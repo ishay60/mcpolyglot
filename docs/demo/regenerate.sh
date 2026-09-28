@@ -8,21 +8,20 @@
 # Run from the repo root:
 #   pnpm build && bash docs/demo/regenerate.sh
 #
-# The captures are deterministic except for:
-#   - the bearer token in serve-http.txt (random per run)
-#   - the sessionId UUID
-#   - latency numbers
-# We hand-edit those after regen to keep the diff focused on real behavior.
+# The bearer token, session UUID, and temp config path are scrubbed at the end.
+# Latency numbers still vary per run.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLI="$ROOT/packages/cli/dist/bin.js"
 DEMO_DIR="$ROOT/docs/demo"
-DB="$(mktemp -t mcpolyglot-demo.XXXXXX.db)"
-CFG="$(mktemp -t mcpolyglot-demo.XXXXXX.json)"
+# mktemp -d, not -t: BSD mktemp appends a suffix after the template, which breaks the .json extension.
+TMP="$(mktemp -d)"
+DB="$TMP/demo.db"
+CFG="$TMP/mcpolyglot.config.json"
 
-trap 'rm -f "$DB" "$CFG"' EXIT
+trap 'rm -rf "$TMP"' EXIT
 
 if [[ ! -x "$CLI" ]]; then
   echo "build the CLI first: pnpm build" >&2
@@ -90,6 +89,15 @@ run doctor  "mcpolyglot doctor --config ./mcpolyglot.config.json" \
 run tools   "mcpolyglot tools --config ./mcpolyglot.config.json" \
             "node \"$CLI\" tools --config \"$CFG\""
 
+echo "regenerating agent-call.txt"
+{
+  echo "# An MCP client calling mcpolyglot over stdio, as an agent would."
+  echo "# Note: email redacted, password_hash dropped by the column deny list,"
+  echo "# result wrapped as untrusted data, and the UPDATE rejected."
+  echo ""
+  node "$DEMO_DIR/agent-call.mjs" "$CLI" "$CFG"
+} > "$DEMO_DIR/agent-call.txt" 2>&1 || true
+
 echo "regenerating serve-http.txt"
 {
   echo "\$ mcpolyglot serve --http --port 7339 --config ./mcpolyglot.config.json"
@@ -101,5 +109,8 @@ sleep 1
 kill "$PID" 2>/dev/null || true
 wait "$PID" 2>/dev/null || true
 
+# Scrub per-run noise so diffs show only real behavior changes.
+perl -pi -e "s#\Q$CFG\E#./mcpolyglot.config.json#g; s#(Token\s+)\S+#\1REDACTED-DEMO-TOKEN#; s#(tokenFingerprint\":\")[^\"]+#\1REDA…OKEN#; s#(sessionId\":\")[^\"]+#\1<session-uuid>#" "$DEMO_DIR"/*.txt
+
 echo ""
-echo "Done. Hand-edit serve-http.txt to redact the bearer token before committing."
+echo "Done."

@@ -12,14 +12,20 @@ How releases work in this repo:
 2. When the PR merges to `develop`, the [Release workflow](./.github/workflows/release.yml)
    either opens a "Version Packages" PR (which collapses pending changesets into
    version bumps + per-package CHANGELOG entries) or — if that PR was just merged —
-   runs `changeset publish` to push the new versions to npm with provenance.
+   runs `changeset publish` to push the new versions to npm.
 
 ## Unreleased
 
-### Wave 2 — Multi-DB + remote (alpha)
+- `@mcpolyglot/core` — OAuth mode for the Streamable HTTP transport: JWTs verified against the issuer's JWKS (`iss`, `aud`, `exp`/`nbf`) (#28).
+- `@mcpolyglot/cli` — redesigned terminal UI; Zod 4 and `@clack/prompts` 1.x (#26).
+- Node.js ≥ 22 is now required (#19).
+- Policy rejections return as readable tool errors (`forbidden.read_only`, …) instead of `-32603`; denied column names no longer leak via `columns`.
 
-The current `develop` includes the work captured in
-[`.changeset/wave-2-multi-db-and-http.md`](./.changeset/wave-2-multi-db-and-http.md):
+## 0.1.0 — 2026-04-26
+
+First npm release: `cli`, `core`, `connector-sql`, `connector-mongo` at 0.1.0; `config`, `security` at 0.0.2. See the [GitHub releases](https://github.com/ishay60/mcpolyglot/releases).
+
+### Wave 2 — Multi-DB + remote (alpha)
 
 - `@mcpolyglot/connector-sql` — MySQL/MariaDB dialect with AST-gated read-only enforcement.
 - `@mcpolyglot/connector-mongo` — new package; sample-based schema inference; `find` / `aggregate` only.

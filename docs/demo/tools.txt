@@ -1,13 +1,19 @@
 $ mcpolyglot tools --config ./mcpolyglot.config.json
 
-  ▲  mcpolyglot  v0.0.1
-     tools — preview generated MCP tools
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ▲  mcpolyglot                                             tools   v0.0.1 │
+  │ preview generated MCP tools                                              │
+  ╰──────────────────────────────────────────────────────────────────────────╯
 
 
   3 tool(s)
-  NAME                        MODE       SCOPES                  DESCRIPTION
-  ──────────────────────────  ─────────  ──────────────────────  ─────────────────────────────────────────────────────────────────────────
-  sqlite.demo.list_tables     read-only  schema:read             List all tables and their columns in the sqlite.demo database.
-  sqlite.demo.describe_table  read-only  schema:read             Describe one table in the sqlite.demo database, including columns, ...
-  sqlite.demo.query           read-only  tables:read, query:raw  Run a read-only SQL query against the sqlite.demo database. Use ...
-  add tools to a host: mcpolyglot serve --config ./mcpolyglot.config.ts
+  ─────────
+  NAME                        MODE       SCOPES                  DESCRIPTION                                                                                                           
+  ──────────────────────────  ─────────  ──────────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  sqlite.demo.list_tables     read-only  schema:read             List all tables and their columns in the sqlite.demo database.                                                        
+  sqlite.demo.describe_table  read-only  schema:read             Describe one table in the sqlite.demo database, including columns, types, and primary key.                            
+  sqlite.demo.query           read-only  tables:read, query:raw  Run a read-only SQL query against the sqlite.demo database. Use parameterized form ($1, $2, ...). Writes are rejected.
+
+  serve: mcpolyglot serve --config ./mcpolyglot.config.json  ·  docs: github.com/ishay60/mcpolyglot
+

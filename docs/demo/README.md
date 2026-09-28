@@ -9,13 +9,14 @@ pnpm build
 bash docs/demo/regenerate.sh
 ```
 
-The captures are deterministic except for the bearer token (random per run), the session UUID, and latency numbers. Hand-edit those after regen to keep PR diffs focused on real behavior changes.
+The bearer token, session UUID, and temp paths are scrubbed automatically; only latency numbers vary between runs.
 
 ## Captures
 
 - [`help.txt`](./help.txt) — `mcpolyglot --help`. Banner + commands.
 - [`doctor.txt`](./doctor.txt) — `mcpolyglot doctor`. Validates config, pings the source, lists generated tools and the scopes each one needs.
 - [`tools.txt`](./tools.txt) — `mcpolyglot tools`. Tabular preview of every tool a config would expose, with read-only / scope columns.
+- [`agent-call.txt`](./agent-call.txt) — an MCP client (what Claude/Cursor are) calling the `query` tool over stdio: emails redacted, `password_hash` dropped, result wrapped as untrusted data, and an `UPDATE` rejected. Driven by [`agent-call.mjs`](./agent-call.mjs).
 - [`serve-http.txt`](./serve-http.txt) — `mcpolyglot serve --http`. Streamable HTTP startup banner, including the structured JSON logs (`http.listening`, `mcpolyglot.started`) and the "ready in 20 ms" line.
 
 ## Sample data

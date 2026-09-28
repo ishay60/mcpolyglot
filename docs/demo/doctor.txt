@@ -1,19 +1,27 @@
 $ mcpolyglot doctor --config ./mcpolyglot.config.json
 
-  ▲  mcpolyglot  v0.0.1
-     doctor — validate config and connectivity
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ▲  mcpolyglot                                            doctor   v0.0.1 │
+  │ validate config, resolve secrets, ping each source                       │
+  ╰──────────────────────────────────────────────────────────────────────────╯
 
 
   Config
-  ✓ parsed  ./mcpolyglot.config.json
+  ──────
+   OK   parsed  ./mcpolyglot.config.json
 
   Sources
-  ✓ sqlite.demo  sql · 2 ms
+  ───────
+   OK   sqlite.demo  sql · 0 ms
   • tools  3 registered
       • sqlite.demo.list_tables  [schema:read]
       • sqlite.demo.describe_table  [schema:read]
       • sqlite.demo.query  [tables:read, query:raw]
 
   Summary
-  ✓ all systems go  mcpolyglot is ready to serve
-  run: mcpolyglot serve
+  ───────
+   READY   mcpolyglot is ready to serve
+
+  run: mcpolyglot serve  ·  docs: github.com/ishay60/mcpolyglot
+
