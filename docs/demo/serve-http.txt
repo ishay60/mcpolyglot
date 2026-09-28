@@ -22,9 +22,9 @@ $ mcpolyglot serve --http --port 7339 --config ./mcpolyglot.config.json
 {"level":"info","msg":"http.listening","host":"127.0.0.1","port":7339,"auth":"bearer","tokenFingerprint":"REDA…OKEN"}
 {"level":"info","msg":"mcpolyglot.started","sessionId":"<session-uuid>","transport":"http","tools":3}
 
-   READY   in 14 ms
+   READY   in 15 ms
 
-  Ctrl+C to stop  ·  audit: ~/.mcpolyglot/audit.log
+  Ctrl+C to stop  ·  audit: stderr, ~/.mcpolyglot/audit.log
 
 
   shutting down…

@@ -51,4 +51,4 @@ docker run --rm -p 127.0.0.1:7337:7337 \
   -e DATABASE_URL -e MCPOLYGLOT_TOKEN mcpolyglot
 ```
 
-Use a JSON (or YAML) config in the container: a `.ts` config imports `@mcpolyglot/config`, which a file mounted at `/config` can't resolve. The server binds `0.0.0.0` inside the container; put TLS in front of it before exposing it beyond localhost.
+This example uses JSON; a `.ts` config works too as long as it only has a type-only import (`import type`), which is what `init` generates. The server binds `0.0.0.0` inside the container; put TLS in front of it before exposing it beyond localhost.

@@ -1,0 +1,19 @@
+{
+  "transport": { "kind": "stdio" },
+  "sources": [
+    {
+      "id": "analytics",
+      "kind": "sqlite",
+      "url": "./analytics.db",
+      "scopes": ["schema:read", "tables:read", "query:raw"],
+      "policy": {
+        "defaultAccess": "none",
+        "tables": { "users": "read", "events": "read" },
+        "denyColumns": ["users.password_hash"],
+        "maxRows": 100,
+        "statementTimeoutMs": 5000
+      }
+    }
+  ],
+  "audit": { "console": true, "path": "./audit.jsonl" }
+}

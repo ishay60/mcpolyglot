@@ -13,11 +13,15 @@ $ mcpolyglot doctor --config ./mcpolyglot.config.json
 
   Sources
   ───────
-   OK   sqlite.demo  sql · 0 ms
+   OK   sqlite.demo  sql · 2 ms
   • tools  3 registered
       • sqlite.demo.list_tables  [schema:read]
       • sqlite.demo.describe_table  [schema:read]
       • sqlite.demo.query  [tables:read, query:raw]
+  • readable  orders, users
+  • writable  none
+  • hidden  none
+  • hidden columns  none
 
   Summary
   ───────

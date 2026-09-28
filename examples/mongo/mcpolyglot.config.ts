@@ -1,6 +1,6 @@
-import { defineConfig } from '@mcpolyglot/config';
+import type { McpolyglotConfig } from '@mcpolyglot/config';
 
-export default defineConfig({
+export default {
   server: { name: 'mcpolyglot', version: '0.0.1' },
   transport: { kind: 'stdio' },
   sources: [
@@ -21,4 +21,4 @@ export default defineConfig({
   audit: { path: '~/.mcpolyglot/audit.log' },
   rateLimit: { defaultPerMinute: 30, maxConcurrent: 5 },
   security: { wrapMode: 'strict' },
-});
+} satisfies McpolyglotConfig;

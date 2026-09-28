@@ -193,9 +193,11 @@ export function renderConfig(opts: {
   url: string;
   policy?: ReturnType<typeof generatePolicy>;
 }): string {
-  return `import { defineConfig } from '@mcpolyglot/config';
+  // Type-only import: erased at load time, so the file runs under npx without
+  // @mcpolyglot/config installed next to it. Install it for editor autocomplete.
+  return `import type { McpolyglotConfig } from '@mcpolyglot/config';
 
-export default defineConfig({
+export default {
   server: { name: 'mcpolyglot', version: '0.0.1' },
   transport: { kind: 'stdio' },
   sources: [
@@ -215,7 +217,7 @@ export default defineConfig({
   audit: { path: '~/.mcpolyglot/audit.log' },
   rateLimit: { defaultPerMinute: 30, maxConcurrent: 5 },
   security: { wrapMode: 'strict' },
-});
+} satisfies McpolyglotConfig;
 `;
 }
 

@@ -57,6 +57,9 @@ d('init <url> / doctor policy checks against SQLite', () => {
     expect(text).toContain(`"transactions": 'read'`);
     expect(text).not.toContain(`: 'write'`);
     expect(text).toMatch(/Suggested from column names[\s\S]*"customers.ssn"/);
+    // Only a type import: the file must load under npx with no @mcpolyglot/config installed.
+    expect(text).toMatch(/^import type \{ McpolyglotConfig \} from '@mcpolyglot\/config';/m);
+    expect(text).not.toMatch(/^import \{/m);
     await expect(initCommand({ cwd: dir, url: dbPath })).rejects.toThrow(/already exists/);
   });
 

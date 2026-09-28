@@ -14,13 +14,15 @@ For every SQL source mcpolyglot generates:
 
 ## How read-only is enforced
 
-| Dialect  | Enforcement                                                                                                   |
-| -------- | ------------------------------------------------------------------------------------------------------------- |
-| Postgres | `BEGIN READ ONLY` transaction; rolled back at the end of every call.                                          |
-| SQLite   | `PRAGMA query_only = 1`; database opened read-only when possible.                                             |
-| MySQL    | AST gate (`node-sql-parser` mysql grammar) + `SET SESSION TRANSACTION READ ONLY` + `MAX_EXECUTION_TIME` hint. |
+Three layers, each enough on its own for the common case:
 
-The AST gate matters on MySQL because `SET TRANSACTION READ ONLY` is partially honored — the parser refuses anything whose top-level statement isn't a read.
+| Layer                             | Postgres                                     | MySQL                                                                | SQLite                                |
+| --------------------------------- | -------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------- |
+| Policy classifier (every dialect) | parses the SQL, denies before the DB sees it | same                                                                 | same                                  |
+| Per call (`query`)                | `BEGIN READ ONLY`, rolled back               | AST gate + `START TRANSACTION READ ONLY` + `MAX_EXECUTION_TIME` hint | statement must be a reader            |
+| Per connection (no `write` table) | `default_transaction_read_only=on`           | `SESSION TRANSACTION READ ONLY` on every pooled connection           | file opened `readonly` + `query_only` |
+
+The MySQL AST gate matters because MySQL's transaction read-only mode doesn't cover everything. The connection layer is a session default, so a `SET` could undo it; the classifier blocks `SET`. A database role without write grants is still the real backstop.
 
 ## Policy layer
 
