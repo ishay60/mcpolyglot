@@ -56,6 +56,35 @@ npx @mcpolyglot/cli doctor      # validate, ping every source, list the tools
 npx @mcpolyglot/cli serve       # start the MCP server (stdio by default)
 ```
 
+Already have a database? Point `init` at it instead of answering prompts:
+
+```bash
+npx @mcpolyglot/cli init "$DATABASE_URL"   # or a SQLite path: init ./app.db
+```
+
+It introspects the schema and writes a policy with every table `read` (never `write`), `defaultAccess: 'none'` so tables added later stay hidden until you list them, and suggested `denyColumns` for names like `password`, `token`, `ssn`, `api_key`, `hash`. A URL with an inline password is written as `${env:DATABASE_URL}`. `doctor` then checks the policy against the live schema: a policy key naming a table that doesn't exist, or a denied column that doesn't exist, fails the check. It also prints what each source exposes:
+
+```text
+  • readable  public.accounts, public.customers, public.transactions
+  • writable  none
+  • hidden  none
+  • hidden columns  public.customers.ssn
+```
+
+**Docker.** The root [`Dockerfile`](./Dockerfile) runs `serve --http` as a non-root user with a config mounted at `/config/mcpolyglot.config.json`. [`examples/docker-compose`](./examples/docker-compose) brings up Postgres with a sample schema next to it: `docker compose up -d --build`, then `curl localhost:7337/healthz`.
+
+**From code.** [`@mcpolyglot/client`](./packages/client) talks to a running HTTP server with the same policy checks an agent gets:
+
+```ts
+const db = await McpolyglotClient.connect('http://127.0.0.1:7337/mcp', { token });
+const { rows } = await db.query(
+  'bank',
+  'SELECT id, kind FROM accounts WHERE customer_id = $1',
+  [1],
+);
+// policy denials throw McpolyglotDeniedError { code: 'forbidden.policy', reason }
+```
+
 Sample output: [`doctor`](./docs/demo/doctor.txt) · [`tools`](./docs/demo/tools.txt) · [`serve --http`](./docs/demo/serve-http.txt).
 
 Wire it into Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
@@ -140,10 +169,12 @@ packages/
   security/          scopes, redaction, audit, rate limit, wrap
   connector-sql/     Postgres, MySQL/MariaDB, SQLite
   connector-mongo/   MongoDB
+  client/            typed SDK client for a running HTTP server
   testkit/           MCP conformance harness
 examples/
   postgres/  sqlite/  mysql/  mongo/   stdio
   http/                                streamable-http + bearer / OAuth
+  docker-compose/                      Postgres + mcpolyglot in containers
 ```
 
 </details>
