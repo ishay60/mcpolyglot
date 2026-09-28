@@ -68,6 +68,26 @@ export class MysqlDialect implements SqlDialect {
     }
   }
 
+  async auditPrivileges(): Promise<string[]> {
+    const c = await this.requirePool().getConnection();
+    try {
+      const [rows] = (await c.query('SHOW GRANTS FOR CURRENT_USER()')) as [
+        Array<Record<string, unknown>>,
+        unknown,
+      ];
+      const grants = rows.map((r) => String(Object.values(r)[0] ?? '')).join('\n');
+      const problems: string[] = [];
+      if (/\bALL PRIVILEGES\b/i.test(grants))
+        problems.push('database user has ALL PRIVILEGES; policy cannot be enforced');
+      if (/\bSUPER\b/i.test(grants)) problems.push('database user has SUPER');
+      if (/\bFILE\b/i.test(grants))
+        problems.push('database user has FILE (LOAD_FILE, SELECT ... INTO OUTFILE)');
+      return problems;
+    } finally {
+      c.release();
+    }
+  }
+
   async listTables(): Promise<TableSchema[]> {
     const c = await this.requirePool().getConnection();
     try {

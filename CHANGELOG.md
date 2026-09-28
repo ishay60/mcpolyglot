@@ -16,6 +16,8 @@ How releases work in this repo:
 
 ## Unreleased
 
+- `@mcpolyglot/connector-sql` — classifier hardening: whole-row references (`SELECT u FROM users u`, `to_jsonb(u)`, `u::text`) now hit `denyColumns`; denied keys are stripped from JSON/record values in results; `SELECT ... INTO`, server-access functions (`pg_read_file`, `LOAD_FILE`, `dblink`, `pg_sleep`, ...), system catalogs, and `WHERE 1=1` writes are denied.
+- `@mcpolyglot/cli` — `doctor` fails when the database user is a superuser or holds server file privileges (`pg_read_server_files`, MySQL `FILE`), since the classifier is defense-in-depth and the grant is the control.
 - `@mcpolyglot/core` — OAuth mode for the Streamable HTTP transport: JWTs verified against the issuer's JWKS (`iss`, `aud`, `exp`/`nbf`) (#28).
 - `@mcpolyglot/cli` — redesigned terminal UI; Zod 4 and `@clack/prompts` 1.x (#26).
 - Node.js ≥ 22 is now required (#19).

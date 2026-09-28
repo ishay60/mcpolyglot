@@ -15,6 +15,11 @@ export interface SqlDialect {
   close(): Promise<void>;
   ping(): Promise<{ ok: boolean; latencyMs: number; details?: string }>;
   listTables(): Promise<TableSchema[]>;
+  /**
+   * Report privileges the connected user holds that would let SQL bypass the policy layer
+   * (superuser, server filesystem access, ...). One human-readable problem per entry.
+   */
+  auditPrivileges?(): Promise<string[]>;
   /** Run a read-only query with timeout + row cap. Implementations MUST refuse writes. */
   runReadOnly(
     sql: string,

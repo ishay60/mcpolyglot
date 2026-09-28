@@ -1,7 +1,12 @@
 import pc from 'picocolors';
 import { loadConfig, looksLikeLiteralCredential } from '@mcpolyglot/config';
 import type { TableSchema } from '@mcpolyglot/core';
-import { isColumnDenied, PolicySchema, tableAccess } from '@mcpolyglot/connector-sql';
+import {
+  isColumnDenied,
+  PolicySchema,
+  tableAccess,
+  type SqlConnector,
+} from '@mcpolyglot/connector-sql';
 import { buildServerFromConfig } from '../factory.js';
 import { doctorAgents } from './doctor-agents.js';
 import {
@@ -96,6 +101,13 @@ export async function doctorCommand(opts: DoctorOptions): Promise<boolean> {
         const snap = await c.introspect();
         if (snap.kind === 'sql' && !printPolicyReport(checkPolicy(src.policy, snap.tables))) {
           allOk = false;
+        }
+        // The classifier is defense-in-depth; the DB grant is the control. A user that can
+        // read server files or is superuser makes the policy advisory, so doctor fails.
+        const privs = await (c as SqlConnector).auditPrivileges();
+        for (const p of privs) {
+          allOk = false;
+          err('privileges', p, stdoutSink);
         }
       }
       await c.close();
