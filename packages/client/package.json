@@ -1,0 +1,46 @@
+{
+  "name": "@mcpolyglot/client",
+  "version": "0.0.1",
+  "description": "Typed client for a running mcpolyglot HTTP server: list tables and run policy-checked queries from plain TypeScript, outside an MCP host.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ishay60/mcpolyglot.git",
+    "directory": "packages/client"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  },
+  "devDependencies": {
+    "@mcpolyglot/connector-sql": "workspace:^",
+    "@mcpolyglot/core": "workspace:^",
+    "@mcpolyglot/security": "workspace:^",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^25.6.0",
+    "better-sqlite3": "^12.4.1",
+    "typescript": "^6.0.3",
+    "vitest": "^2.1.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

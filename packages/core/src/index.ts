@@ -25,6 +25,7 @@ export { ALL_SCOPES, DEFAULT_SCOPES } from './tool.js';
 export {
   McpolyglotServer,
   type McpolyglotServerOptions,
+  type AgentGrant,
   type SecurityServices,
   type SecurityHooks,
 } from './server.js';

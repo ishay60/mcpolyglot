@@ -5,14 +5,20 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const [cli, config] = process.argv.slice(2);
-const require = createRequire(fileURLToPath(new URL('../../packages/core/package.json', import.meta.url)));
+const require = createRequire(
+  fileURLToPath(new URL('../../packages/core/package.json', import.meta.url)),
+);
 const load = (p) => import(pathToFileURL(require.resolve(p)).href);
 const { Client } = await load('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = await load('@modelcontextprotocol/sdk/client/stdio.js');
 
 const client = new Client({ name: 'demo-agent', version: '0.0.0' });
 await client.connect(
-  new StdioClientTransport({ command: 'node', args: [cli, 'serve', '--config', config], stderr: 'ignore' }),
+  new StdioClientTransport({
+    command: 'node',
+    args: [cli, 'serve', '--config', config],
+    stderr: 'ignore',
+  }),
 );
 
 async function call(name, args) {

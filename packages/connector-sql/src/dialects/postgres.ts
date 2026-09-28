@@ -1,20 +1,25 @@
 import type { TableSchema } from '@mcpolyglot/core';
 import { McpolyglotError } from '@mcpolyglot/core';
-import type { SqlDialect, SqlQueryResult } from '../dialect.js';
+import { tooManyRows, type PoolOptions, type SqlDialect, type SqlQueryResult } from '../dialect.js';
 
 export class PostgresDialect implements SqlDialect {
   readonly kind = 'postgres' as const;
   private pool?: import('pg').Pool;
 
-  constructor(private readonly connectionString: string) {}
+  constructor(
+    private readonly connectionString: string,
+    private readonly poolOpts: PoolOptions = {},
+  ) {}
 
-  async connect(): Promise<void> {
+  async connect({ writable = false }: { writable?: boolean } = {}): Promise<void> {
     const { Pool } = await loadPg();
     this.pool = new Pool({
       connectionString: this.connectionString,
-      max: 4,
-      idleTimeoutMillis: 30_000,
+      max: this.poolOpts.max ?? 4,
+      idleTimeoutMillis: this.poolOpts.idleTimeoutMs ?? 30_000,
       application_name: 'mcpolyglot',
+      // Every transaction on a read-only pool is read-only unless explicitly overridden.
+      ...(writable ? {} : { options: '-c default_transaction_read_only=on' }),
     });
     // probe
     const c = await this.pool.connect();
@@ -116,11 +121,7 @@ export class PostgresDialect implements SqlDialect {
         });
         return { columns: fields, rows, rowCount: rows.length, truncated };
       } catch (err) {
-        // 25006 = read_only_sql_transaction: the DB-level guard caught a write.
-        if ((err as { code?: string }).code === '25006') {
-          throw new McpolyglotError('forbidden.read_only', (err as Error).message);
-        }
-        throw err;
+        throw mapReadOnly(err);
       } finally {
         opts.signal?.removeEventListener('abort', onAbort);
         await c.query('ROLLBACK').catch(() => {});
@@ -130,11 +131,46 @@ export class PostgresDialect implements SqlDialect {
     }
   }
 
+  async runWrite(
+    sql: string,
+    params: ReadonlyArray<unknown>,
+    opts: { maxRowsAffected: number; timeoutMs: number; signal?: AbortSignal },
+  ): Promise<{ rowsAffected: number }> {
+    const c = await this.requirePool().connect();
+    const onAbort = () => {
+      c.query('SELECT pg_cancel_backend(pg_backend_pid())').catch(() => {});
+    };
+    try {
+      await c.query('BEGIN');
+      await c.query(`SET LOCAL statement_timeout = ${Math.max(1, Math.floor(opts.timeoutMs))}`);
+      opts.signal?.addEventListener('abort', onAbort, { once: true });
+      const res = await c.query({ text: sql, values: params as unknown[] });
+      const n = res.rowCount ?? 0;
+      if (n > opts.maxRowsAffected) throw tooManyRows(n, opts.maxRowsAffected);
+      await c.query('COMMIT');
+      return { rowsAffected: n };
+    } catch (err) {
+      await c.query('ROLLBACK').catch(() => {});
+      throw mapReadOnly(err);
+    } finally {
+      opts.signal?.removeEventListener('abort', onAbort);
+      c.release();
+    }
+  }
+
   private requirePool(): import('pg').Pool {
     if (!this.pool)
       throw new McpolyglotError('connector.not_initialized', 'PostgresDialect not connected');
     return this.pool;
   }
+}
+
+// 25006 = read_only_sql_transaction: the DB-level guard caught a write.
+function mapReadOnly(err: unknown): unknown {
+  if ((err as { code?: string }).code === '25006') {
+    return new McpolyglotError('forbidden.read_only', (err as Error).message);
+  }
+  return err;
 }
 
 async function loadPg(): Promise<typeof import('pg')> {

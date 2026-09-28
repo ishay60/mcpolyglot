@@ -1,0 +1,29 @@
+{
+  "server": { "name": "mcpolyglot", "version": "0.0.1" },
+  "transport": {
+    "kind": "http",
+    "host": "0.0.0.0",
+    "port": 7337,
+    "auth": { "type": "bearer", "token": "${env:MCPOLYGLOT_TOKEN}" }
+  },
+  "sources": [
+    {
+      "id": "bank",
+      "kind": "postgres",
+      "url": "${env:DATABASE_URL}",
+      "scopes": ["schema:read", "tables:read", "query:raw"],
+      "policy": {
+        "defaultAccess": "none",
+        "tables": {
+          "public.customers": "read",
+          "public.accounts": "read",
+          "public.transactions": "read"
+        },
+        "denyColumns": ["public.customers.ssn"],
+        "maxRows": 500
+      }
+    }
+  ],
+  "audit": { "console": true },
+  "security": { "wrapMode": "strict" }
+}

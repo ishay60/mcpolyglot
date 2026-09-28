@@ -59,6 +59,16 @@ const SqlSourceSchema = z.object({
   redact: RedactSchema,
   /** Access policy; validated strictly by `@mcpolyglot/connector-sql` at startup. */
   policy: z.record(z.string(), z.unknown()).optional(),
+  /** Driver pool. SQLite ignores it (one handle). */
+  pool: z
+    .object({
+      max: z.number().int().positive().max(100).optional(),
+      idleTimeoutMs: z.number().int().positive().optional(),
+    })
+    .strict()
+    .optional(),
+  /** Calls beyond this many in flight on this source are rejected with `rate_limited`. */
+  maxConcurrentQueries: z.number().int().positive().optional(),
 });
 
 const MongoSourceSchema = z.object({
@@ -112,6 +122,27 @@ const TransportSchema = z.union([
   }),
 ]);
 
+const AgentSchema = z.object({
+  id: z.string().regex(/^[a-z0-9._-]+$/i),
+  /** Several tokens allow rotation: add the new one, roll clients over, revoke the old. */
+  tokens: z
+    .array(
+      z.object({
+        /** sha256 of the token, lowercase hex. The token itself never goes in config. */
+        hash: z.string().regex(/^[0-9a-f]{64}$/, 'expected a lowercase sha256 hex digest'),
+        label: z.string().optional(),
+        revoked: z.boolean().default(false),
+      }),
+    )
+    .min(1),
+  /** Defaults to (and is always capped at) the union of this agent's sources' scopes. */
+  scopes: z.array(ScopeSchema).optional(),
+  /** Sources this agent can see. `policy` replaces the source's own policy for this agent. */
+  sources: z
+    .record(z.string(), z.object({ policy: z.record(z.string(), z.unknown()).optional() }))
+    .default({}),
+});
+
 export const ConfigSchema = z.object({
   server: z
     .object({
@@ -142,6 +173,8 @@ export const ConfigSchema = z.object({
       wrapMode: z.enum(['strict', 'minimal', 'off']).default('strict'),
     })
     .default({ wrapMode: 'strict' }),
+  /** Per-agent tokens, sources and scopes for the HTTP transport. Ignored under stdio. */
+  agents: z.array(AgentSchema).optional(),
 });
 
 export type McpolyglotConfig = z.infer<typeof ConfigSchema>;
@@ -149,6 +182,7 @@ export type SqlSourceConfig = z.infer<typeof SqlSourceSchema>;
 export type MongoSourceConfig = z.infer<typeof MongoSourceSchema>;
 export type OpenApiSourceConfig = z.infer<typeof OpenApiSourceSchema>;
 export type SourceConfig = SqlSourceConfig | MongoSourceConfig | OpenApiSourceConfig;
+export type AgentConfig = z.infer<typeof AgentSchema>;
 export type TransportConfig = z.infer<typeof TransportSchema>;
 
 /**

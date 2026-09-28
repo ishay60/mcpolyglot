@@ -19,6 +19,8 @@ export const PolicySchema = z
     maxRows: z.number().int().positive().optional(),
     maxWritesPerCall: z.number().int().positive().default(1),
     statementTimeoutMs: z.number().int().positive().optional(),
+    /** How long an `execute` idempotencyKey is remembered. */
+    idempotencyWindowMinutes: z.number().positive().default(10),
   })
   .strict();
 export type Policy = z.infer<typeof PolicySchema>;
@@ -164,4 +166,41 @@ export function isColumnDenied(policy: Policy, table: string, column: string): b
     const dt = d.slice(0, i).toLowerCase();
     return d.slice(i + 1).toLowerCase() === c && (dt === '*' || bareName(dt) === t);
   });
+}
+
+/**
+ * Combine a source policy with a per-agent override so the result is never more
+ * permissive than either: per table the most restrictive access wins, deny lists are
+ * unioned, and every cap takes the smaller value.
+ */
+export function narrowPolicy(base: Policy, override: Policy): Policy {
+  const lookup = (p: Policy, key: string) => {
+    const i = key.lastIndexOf('.');
+    return i < 0 ? tableAccess(p, 'null', key) : tableAccess(p, key.slice(0, i), key.slice(i + 1));
+  };
+  const stricter = (a: Access, b: Access) => (RANK[a] <= RANK[b] ? a : b);
+  const min = (a?: number, b?: number) =>
+    a === undefined ? b : b === undefined ? a : Math.min(a, b);
+
+  const tables: Record<string, Access> = {};
+  for (const key of new Set([...Object.keys(base.tables), ...Object.keys(override.tables)])) {
+    tables[key] = stricter(lookup(base, key), lookup(override, key));
+  }
+  const maxRows = min(base.maxRows, override.maxRows);
+  const statementTimeoutMs = min(base.statementTimeoutMs, override.statementTimeoutMs);
+  return {
+    tables,
+    defaultAccess:
+      RANK[base.defaultAccess] <= RANK[override.defaultAccess]
+        ? base.defaultAccess
+        : override.defaultAccess,
+    denyColumns: [...new Set([...base.denyColumns, ...override.denyColumns])],
+    maxWritesPerCall: Math.min(base.maxWritesPerCall, override.maxWritesPerCall),
+    idempotencyWindowMinutes: Math.min(
+      base.idempotencyWindowMinutes,
+      override.idempotencyWindowMinutes,
+    ),
+    ...(maxRows !== undefined && { maxRows }),
+    ...(statementTimeoutMs !== undefined && { statementTimeoutMs }),
+  };
 }

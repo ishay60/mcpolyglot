@@ -1,0 +1,19 @@
+{
+  "transport": { "kind": "stdio" },
+  "sources": [
+    {
+      "id": "bank",
+      "kind": "sqlite",
+      "url": "./bank.db",
+      "scopes": ["schema:read", "tables:read", "tables:write", "query:raw"],
+      "policy": {
+        "defaultAccess": "none",
+        "tables": { "customers": "read", "accounts": "read", "transactions": "write" },
+        "denyColumns": ["customers.ssn"],
+        "maxWritesPerCall": 1,
+        "idempotencyWindowMinutes": 10
+      }
+    }
+  ],
+  "audit": { "console": true, "path": "./audit.jsonl" }
+}

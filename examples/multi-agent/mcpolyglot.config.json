@@ -1,0 +1,52 @@
+{
+  "transport": { "kind": "http", "host": "127.0.0.1", "port": 7337 },
+  "sources": [
+    {
+      "id": "app",
+      "kind": "sqlite",
+      "url": "./app.db",
+      "scopes": ["schema:read", "tables:read", "tables:write", "query:raw"],
+      "policy": {
+        "defaultAccess": "none",
+        "tables": { "customers": "read", "invoices": "read", "tickets": "write" }
+      }
+    }
+  ],
+  "agents": [
+    {
+      "id": "support-bot",
+      "tokens": [
+        {
+          "hash": "87fd089ee94c1965c343faebfbff0e3689d571169a4abe77fbad0e8ce03a6aba",
+          "label": "DEMO ONLY"
+        }
+      ],
+      "scopes": ["schema:read", "tables:read", "tables:write", "query:raw"],
+      "sources": { "app": { "policy": { "tables": { "invoices": "none", "tickets": "write" } } } }
+    },
+    {
+      "id": "finance-bot",
+      "tokens": [
+        {
+          "hash": "def24dcaa2767d3713d3e4753dae47336790dedc1b248e065e66e29255466e1e",
+          "label": "DEMO ONLY"
+        }
+      ],
+      "scopes": ["schema:read", "tables:read", "query:raw"],
+      "sources": {
+        "app": { "policy": { "tables": { "tickets": "none" }, "denyColumns": ["customers.email"] } }
+      }
+    },
+    {
+      "id": "retired-bot",
+      "tokens": [
+        {
+          "hash": "c63cbb79418c7c86102fd7668fc4016dfdf0e8b980ef5ee4c833baed933876b0",
+          "revoked": true
+        }
+      ],
+      "sources": { "app": {} }
+    }
+  ],
+  "audit": { "console": true, "path": "./audit.jsonl" }
+}

@@ -14,13 +14,15 @@ For every SQL source mcpolyglot generates:
 
 ## How read-only is enforced
 
-| Dialect  | Enforcement                                                                                                   |
-| -------- | ------------------------------------------------------------------------------------------------------------- |
-| Postgres | `BEGIN READ ONLY` transaction; rolled back at the end of every call.                                          |
-| SQLite   | `PRAGMA query_only = 1`; database opened read-only when possible.                                             |
-| MySQL    | AST gate (`node-sql-parser` mysql grammar) + `SET SESSION TRANSACTION READ ONLY` + `MAX_EXECUTION_TIME` hint. |
+Three layers, each enough on its own for the common case:
 
-The AST gate matters on MySQL because `SET TRANSACTION READ ONLY` is partially honored — the parser refuses anything whose top-level statement isn't a read.
+| Layer                             | Postgres                                     | MySQL                                                                | SQLite                                |
+| --------------------------------- | -------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------- |
+| Policy classifier (every dialect) | parses the SQL, denies before the DB sees it | same                                                                 | same                                  |
+| Per call (`query`)                | `BEGIN READ ONLY`, rolled back               | AST gate + `START TRANSACTION READ ONLY` + `MAX_EXECUTION_TIME` hint | statement must be a reader            |
+| Per connection (no `write` table) | `default_transaction_read_only=on`           | `SESSION TRANSACTION READ ONLY` on every pooled connection           | file opened `readonly` + `query_only` |
+
+The MySQL AST gate matters because MySQL's transaction read-only mode doesn't cover everything. The connection layer is a session default, so a `SET` could undo it; the classifier blocks `SET`. A database role without write grants is still the real backstop.
 
 ## Policy layer
 
@@ -33,7 +35,8 @@ policy: {
   denyColumns: ['users.password_hash', '*.ssn'],
   maxRows: 100,                     // min'd with limits.rowCap
   statementTimeoutMs: 5000,         // min'd with limits.timeoutMs
-  maxWritesPerCall: 1,              // reserved for the write tool
+  maxWritesPerCall: 1,              // execute rolls back above this many changed rows
+  idempotencyWindowMinutes: 10,     // execute idempotencyKey memory
 }
 ```
 
@@ -50,7 +53,30 @@ Rules (each has a case in `src/__tests__/policy.test.ts`):
 Known limits:
 
 - The policy sees tables and columns, not functions, so `SELECT pg_read_file(...)` passes the classifier. Enforce that with the DB role's privileges.
-- Writes that pass policy are still rejected, because the connection is read-only at the DB level. This is covered by a test. The write tool (with `maxWritesPerCall`) arrives with the DB-side work.
+- `query` never writes, even on a writable connection: Postgres/MySQL run it in a read-only transaction and SQLite refuses non-reader statements.
+
+## Writes and connection safety
+
+The connection's mode follows the policy:
+
+- **No `write` table** (the default): the database itself refuses writes. Postgres pools set `default_transaction_read_only=on`, MySQL sets `SESSION TRANSACTION READ ONLY` on every new pool connection (a failed SET drops the connection), SQLite opens the file `readonly` with `query_only`. The `execute` tool is not registered.
+- **At least one `write` table**: the connection is writable and `<id>.execute` appears (scope `tables:write`).
+
+`execute` runs one `INSERT`/`UPDATE`/`DELETE` that `classify()` allows, inside a transaction, with `statementTimeoutMs`. If it changes more than `maxWritesPerCall` rows it rolls back and fails with `forbidden.policy` (the reason carries both counts). Success returns `{ rowsAffected }`, also in `metadata.rows`. `dryRun` works as in `query`.
+
+`idempotencyKey` (optional): a retry with the same key within `idempotencyWindowMinutes` returns the first result without writing again. The same key with different `sql`/`params` fails with `invalid_argument`. Failed calls are not remembered. Keys live in process memory, per connector: a restart or a second replica forgets them.
+
+Source-level limits:
+
+```ts
+{ id: 'pg.main', kind: 'postgres', url: '…',
+  pool: { max: 4, idleTimeoutMs: 30000 },   // pg / mysql2 pool; SQLite ignores it
+  maxConcurrentQueries: 8 }                 // query + execute in flight on this source
+```
+
+Calls over `maxConcurrentQueries` are **rejected** immediately with `rate_limited`, not queued, so the agent sees back-pressure instead of a hidden wait.
+
+Known gaps: MySQL has no server-side timeout for DML, so `execute` uses the driver's client-side timeout (the server may run on briefly). SQLite checks the timeout after the statement finishes, then rolls back. A replayed idempotent call returns the old result even if the row has since changed.
 
 ## Drivers are optional deps
 
