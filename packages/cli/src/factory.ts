@@ -13,6 +13,7 @@ import {
 import { defaultSecurityHooks } from '@mcpolyglot/security';
 import {
   MysqlDialect,
+  PolicySchema,
   PostgresDialect,
   SqlConnector,
   SqliteDialect,
@@ -88,16 +89,28 @@ async function buildConnector(src: SourceConfig): Promise<Connector> {
   switch (src.kind) {
     case 'postgres': {
       const url = await resolveSecrets(src.url);
-      return new SqlConnector({ id: src.id, dialect: new PostgresDialect(url) });
+      return new SqlConnector({
+        id: src.id,
+        dialect: new PostgresDialect(url),
+        policy: sqlPolicy(src),
+      });
     }
     case 'sqlite': {
       const url = await resolveSecrets(src.url);
-      return new SqlConnector({ id: src.id, dialect: new SqliteDialect(url) });
+      return new SqlConnector({
+        id: src.id,
+        dialect: new SqliteDialect(url),
+        policy: sqlPolicy(src),
+      });
     }
     case 'mysql':
     case 'mariadb': {
       const url = await resolveSecrets(src.url);
-      return new SqlConnector({ id: src.id, dialect: new MysqlDialect(url) });
+      return new SqlConnector({
+        id: src.id,
+        dialect: new MysqlDialect(url),
+        policy: sqlPolicy(src),
+      });
     }
     case 'mongo': {
       const url = await resolveSecrets(src.url);
@@ -115,6 +128,15 @@ async function buildConnector(src: SourceConfig): Promise<Connector> {
       throw new ConfigError(`Unknown source kind`);
     }
   }
+}
+
+function sqlPolicy(src: SqlSourceConfig) {
+  if (!src.policy) return undefined;
+  const parsed = PolicySchema.safeParse(src.policy);
+  if (!parsed.success) {
+    throw new ConfigError(`Invalid policy for source "${src.id}": ${parsed.error.message}`);
+  }
+  return parsed.data;
 }
 
 function getLimits(src: SourceConfig): { rowCap: number; timeoutMs: number; maxBytes: number } {

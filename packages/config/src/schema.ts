@@ -57,6 +57,8 @@ const SqlSourceSchema = z.object({
   perEntityTools: PerEntitySchema,
   limits: LimitsSchema,
   redact: RedactSchema,
+  /** Access policy; validated strictly by `@mcpolyglot/connector-sql` at startup. */
+  policy: z.record(z.string(), z.unknown()).optional(),
 });
 
 const MongoSourceSchema = z.object({

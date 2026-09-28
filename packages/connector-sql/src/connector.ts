@@ -9,24 +9,29 @@ import type {
 } from '@mcpolyglot/core';
 import { McpolyglotError } from '@mcpolyglot/core';
 import type { SqlDialect } from './dialect.js';
+import { classify, isColumnDenied, PolicySchema, tableAccess, type Policy } from './policy.js';
 
 export type SqlDialectKind = SqlDialect['kind'];
 
 export interface SqlConnectorOptions {
   id: string;
   dialect: SqlDialect;
+  /** Access policy. Omitted = every table readable, no writes, no column denies. */
+  policy?: Policy;
 }
 
 export class SqlConnector implements Connector {
   readonly id: string;
   readonly kind = 'sql' as const;
   private readonly dialect: SqlDialect;
+  private readonly policy: Policy;
   private logger?: ConnectorInitCtx['logger'];
   private cachedTables?: TableSchema[];
 
   constructor(opts: SqlConnectorOptions) {
     this.id = opts.id;
     this.dialect = opts.dialect;
+    this.policy = PolicySchema.parse(opts.policy ?? {});
   }
 
   async init(ctx: ConnectorInitCtx): Promise<void> {
@@ -103,15 +108,32 @@ export class SqlConnector implements Connector {
               .describe('SQL query string. Read-only — INSERT/UPDATE/DELETE/DDL will be rejected.'),
             params: z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
             limit: z.number().int().positive().max(1000).optional(),
+            dryRun: z
+              .boolean()
+              .optional()
+              .describe('Return the policy decision without executing the query.'),
           })
           .strict(),
         scopes: ['tables:read', 'query:raw'],
         readOnly: true,
-        handler: async ({ sql, params, limit }, ctx) => {
-          const rowCap = Math.min(limit ?? ctx.limits.rowCap, ctx.limits.rowCap);
+        handler: async ({ sql, params, limit, dryRun }, ctx) => {
+          const decision = classify(sql, this.policy, this.dialect.kind);
+          if (dryRun) {
+            return { content: [{ type: 'json', data: { dryRun: true, decision } }] };
+          }
+          if (!decision.allow) {
+            throw new McpolyglotError('forbidden.policy', decision.reason, {
+              tables: decision.tables,
+            });
+          }
+          const rowCap = Math.min(
+            limit ?? ctx.limits.rowCap,
+            ctx.limits.rowCap,
+            this.policy.maxRows ?? Infinity,
+          );
           const result = await this.dialect.runReadOnly(sql, params ?? [], {
             rowCap,
-            timeoutMs: ctx.limits.timeoutMs,
+            timeoutMs: Math.min(ctx.limits.timeoutMs, this.policy.statementTimeoutMs ?? Infinity),
             signal: ctx.signal,
           });
           return {
@@ -132,7 +154,12 @@ export class SqlConnector implements Connector {
     if (!this.cachedTables) {
       this.cachedTables = await this.dialect.listTables();
     }
-    return this.cachedTables;
+    return this.cachedTables.flatMap((t) => {
+      if (tableAccess(this.policy, t.schema ?? 'null', t.name) === 'none') return [];
+      return [
+        { ...t, columns: t.columns.filter((c) => !isColumnDenied(this.policy, t.name, c.name)) },
+      ];
+    });
   }
 }
 
