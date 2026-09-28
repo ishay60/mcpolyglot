@@ -122,8 +122,15 @@ export const ConfigSchema = z.object({
   transport: TransportSchema.default({ kind: 'stdio' }),
   sources: z.array(z.union([SqlSourceSchema, MongoSourceSchema, OpenApiSourceSchema])).min(1),
   audit: z
-    .object({ path: z.string().default('~/.mcpolyglot/audit.log') })
-    .default({ path: '~/.mcpolyglot/audit.log' }),
+    .object({
+      /** JSONL to stdout (stderr under the stdio transport). */
+      console: z.boolean().default(true),
+      /** Also append JSONL to this file. */
+      path: z.string().optional(),
+      /** Also POST each entry as JSON. Supports `${env:NAME}`. */
+      webhookUrl: z.string().optional(),
+    })
+    .default({ console: true }),
   rateLimit: z
     .object({
       defaultPerMinute: z.number().int().positive().default(30),

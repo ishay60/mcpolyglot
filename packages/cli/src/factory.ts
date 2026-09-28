@@ -53,7 +53,14 @@ export async function buildServerFromConfig(
       perMinute: cfg.rateLimit.defaultPerMinute,
       maxConcurrent: cfg.rateLimit.maxConcurrent,
     },
-    audit: { path: cfg.audit.path },
+    audit: {
+      // stdout carries the MCP protocol under stdio, so audit goes to stderr there.
+      console: cfg.audit.console ? (cfg.transport.kind === 'stdio' ? 'stderr' : 'stdout') : false,
+      ...(cfg.audit.path ? { path: cfg.audit.path } : {}),
+      ...(cfg.audit.webhookUrl
+        ? { webhook: { url: await resolveSecrets(cfg.audit.webhookUrl) } }
+        : {}),
+    },
     redactor: {
       denyColumns: collectDenyColumns(cfg.sources),
       customRules: collectCustomRules(cfg.sources),

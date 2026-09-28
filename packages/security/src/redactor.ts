@@ -68,6 +68,11 @@ export class Redactor {
     return { result: next, redactionsApplied: count };
   }
 
+  /** Apply the text rules (no column denies) to one string. */
+  redactText(input: string): string {
+    return this.redactString(input).text;
+  }
+
   private redactString(input: string): { text: string; redactions: number } {
     let redactions = 0;
     let text = input;

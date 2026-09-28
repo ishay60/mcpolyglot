@@ -48,6 +48,7 @@ Rules (each has a case in `src/__tests__/policy.test.ts`):
 - `dryRun: true` returns `{ decision }` without executing.
 
 Known limits:
+
 - The policy sees tables and columns, not functions, so `SELECT pg_read_file(...)` passes the classifier. Enforce that with the DB role's privileges.
 - Writes that pass policy are still rejected, because the connection is read-only at the DB level. This is covered by a test. The write tool (with `maxWritesPerCall`) arrives with the DB-side work.
 
