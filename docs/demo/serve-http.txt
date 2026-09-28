@@ -1,22 +1,30 @@
 $ mcpolyglot serve --http --port 7339 --config ./mcpolyglot.config.json
 
-  ▲  mcpolyglot  v0.0.1
-     one config, every database your agent needs
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ▲  mcpolyglot                                             serve   v0.0.1 │
+  │ one config, every database your agent needs                              │
+  ╰──────────────────────────────────────────────────────────────────────────╯
 
 
   Sources
+  ───────
   • sqlite.demo  (sql)  —  3 tools
 
   Transport
+  ─────────
   ➜  Mode     streamable-http
   ➜  URL      http://127.0.0.1:7339/mcp
   ➜  Health   http://127.0.0.1:7339/healthz
-  ➜  Token    REDACTED-DEMO-TOKEN-xxxxxxxxxx
+  ➜  Token    REDACTED-DEMO-TOKEN
   ➜  Config   mcpolyglot.config.json
 {"level":"info","msg":"connector.sql.connected","id":"sqlite.demo","dialect":"sqlite"}
-{"level":"info","msg":"http.listening","host":"127.0.0.1","port":7339,"tokenFingerprint":"REDA…xxxx"}
-{"level":"info","msg":"mcpolyglot.started","sessionId":"e46c7571-e0b2-4559-a982-e76ea6ee0cb4","transport":"http","tools":3}
+{"level":"info","msg":"http.listening","host":"127.0.0.1","port":7339,"auth":"bearer","tokenFingerprint":"REDA…OKEN"}
+{"level":"info","msg":"mcpolyglot.started","sessionId":"<session-uuid>","transport":"http","tools":3}
 
-  ready in 20 ms
+   READY   in 13 ms
 
-  Press Ctrl+C to stop. Audit log: ~/.mcpolyglot/audit.log
+  Ctrl+C to stop  ·  audit: ~/.mcpolyglot/audit.log
+
+
+  shutting down…
