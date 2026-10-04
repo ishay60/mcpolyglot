@@ -1,6 +1,6 @@
 # mcpolyglot
 
-> One config, one CLI — turns the databases you already have (Postgres, MySQL, SQLite, MongoDB) into [Model Context Protocol](https://modelcontextprotocol.io) servers for Claude, GPT, Cursor, and any other agent that speaks MCP.
+> One config, one CLI — turns the databases and REST APIs you already have (Postgres, MySQL, SQLite, MongoDB, OpenAPI) into [Model Context Protocol](https://modelcontextprotocol.io) servers for Claude, GPT, Cursor, and any other agent that speaks MCP.
 
 [![CI](https://github.com/ishay60/mcpolyglot/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/ishay60/mcpolyglot/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@mcpolyglot/cli?label=%40mcpolyglot%2Fcli)](https://www.npmjs.com/package/@mcpolyglot/cli)
