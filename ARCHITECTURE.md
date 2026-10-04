@@ -73,8 +73,8 @@ interface Connector {
   init(ctx: ConnectorInitCtx): Promise<void>;
   close(): Promise<void>;
   health(): Promise<{ ok: boolean; latencyMs: number; details?: string }>;
-  introspect(): Promise<SchemaSnapshot>;
   listPrimitiveTools(): ToolDefinition[];
+  diagnose?(): Promise<ConnectorDiagnosis>; // findings for `doctor`
 }
 ```
 

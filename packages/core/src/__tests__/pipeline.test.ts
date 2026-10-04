@@ -4,6 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpolyglotServer, type AuditEntry } from '../server.js';
 import type { Connector } from '../connector.js';
+import type { ToolExecLimits } from '../tool.js';
 import type { Transport } from '../transport.js';
 import { McpolyglotError } from '../errors.js';
 
@@ -18,7 +19,6 @@ function fakeConnector(): Connector {
     init: async () => {},
     close: async () => {},
     health: async () => ({ ok: true, latencyMs: 0 }),
-    introspect: async () => ({ kind: 'sql', tables: [] }),
     listPrimitiveTools: () => [
       {
         name: 'fake.ok',
@@ -74,7 +74,7 @@ function fakeConnector(): Connector {
   } as unknown as Connector;
 }
 
-async function boot(opts: { timeoutMs?: number } = {}) {
+async function boot(opts: { timeoutMs?: number; limits?: Record<string, ToolExecLimits> } = {}) {
   const entries: AuditEntry[] = [];
   const rate = { taken: 0, released: 0 };
   const passthrough = (_: string, r: never) => r;
@@ -100,6 +100,7 @@ async function boot(opts: { timeoutMs?: number } = {}) {
         },
       },
       defaultLimits: { rowCap: 10, timeoutMs: opts.timeoutMs ?? 5_000, maxBytes: 65_536 },
+      ...(opts.limits ? { limits: opts.limits } : {}),
       defaultScopes: [],
     },
   });
@@ -184,6 +185,20 @@ describe('pipeline guarantees', () => {
         .catch(() => {});
     }
     expect(rate).toEqual({ taken: 4, released: 4 });
+    await server.stop();
+  });
+});
+
+describe('per-connector limits', () => {
+  it("runs a tool under its own connector's limits, not the default", async () => {
+    // The default allows 5s; the connector's own limit is 50ms, so the slow tool must time out.
+    const { client, entries, server } = await boot({
+      limits: { fake: { rowCap: 1, timeoutMs: 50, maxBytes: 65_536 } },
+    });
+    const started = Date.now();
+    await client.callTool({ name: 'fake.slow', arguments: {} }).catch(() => {});
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(entries.at(-1)?.error?.code).toBe('timeout');
     await server.stop();
   });
 });

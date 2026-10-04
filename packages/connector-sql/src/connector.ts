@@ -1,14 +1,21 @@
 import { z } from 'zod';
 import type {
   Connector,
+  ConnectorDiagnosis,
   ConnectorInitCtx,
-  SchemaSnapshot,
   TableSchema,
   ToolDefinition,
 } from '@mcpolyglot/core';
 import { McpolyglotError, RateLimitError } from '@mcpolyglot/core';
 import type { SqlDialect } from './dialect.js';
-import { classify, isColumnDenied, PolicySchema, tableAccess, type Policy } from './policy.js';
+import {
+  checkPolicy,
+  classify,
+  isColumnDenied,
+  PolicySchema,
+  tableAccess,
+  type Policy,
+} from './policy.js';
 
 export type SqlDialectKind = SqlDialect['kind'];
 
@@ -53,14 +60,6 @@ export class SqlConnector implements Connector {
     );
   }
 
-  /**
-   * Privileges the database user holds that would let a query bypass the policy (superuser,
-   * server file access, ...). Empty when the dialect can't tell or nothing is wrong.
-   */
-  async auditPrivileges(): Promise<string[]> {
-    return this.dialect.auditPrivileges ? this.dialect.auditPrivileges() : [];
-  }
-
   /** True when the policy grants `write` on at least one table. */
   get writable(): boolean {
     return Object.values(this.policy.tables).includes('write');
@@ -80,10 +79,26 @@ export class SqlConnector implements Connector {
     return this.dialect.ping();
   }
 
-  async introspect(): Promise<SchemaSnapshot> {
+  /**
+   * The policy checked against the live schema, plus privileges the database user holds that
+   * would let a query bypass it (superuser, server file access, ...). The classifier is
+   * defense-in-depth; the DB grant is the control, so such a privilege is a problem.
+   */
+  async diagnose(): Promise<ConnectorDiagnosis> {
     const tables = await this.dialect.listTables();
     this.cachedTables = tables;
-    return { kind: 'sql', tables };
+    const { problems, readable, writable, hidden, hiddenColumns } = checkPolicy(
+      this.policy,
+      tables,
+    );
+    const privileges = (await this.dialect.auditPrivileges?.()) ?? [];
+    return {
+      facts: { readable, writable, hidden, 'hidden columns': hiddenColumns },
+      problems: [
+        ...problems.map((message) => ({ check: 'policy', message })),
+        ...privileges.map((message) => ({ check: 'privileges', message })),
+      ],
+    };
   }
 
   listPrimitiveTools(): ToolDefinition[] {

@@ -1,5 +1,6 @@
 import sqlParser from 'node-sql-parser';
 import { z } from 'zod';
+import type { TableSchema } from '@mcpolyglot/core';
 import type { SqlDialect } from './dialect.js';
 
 const { Parser } = sqlParser;
@@ -382,4 +383,55 @@ export function narrowPolicy(base: Policy, override: Policy): Policy {
     ...(maxRows !== undefined && { maxRows }),
     ...(statementTimeoutMs !== undefined && { statementTimeoutMs }),
   };
+}
+
+export interface PolicyReport {
+  problems: string[];
+  readable: string[];
+  writable: string[];
+  hidden: string[];
+  hiddenColumns: string[];
+}
+
+/** Check a policy against the live schema: what it exposes, and entries that match nothing. */
+export function checkPolicy(policy: Policy, tables: TableSchema[]): PolicyReport {
+  const name = (t: TableSchema) => (t.schema ? `${t.schema}.${t.name}` : t.name);
+  const matches = (key: string, t: TableSchema) => {
+    const k = key.toLowerCase();
+    return k === t.name.toLowerCase() || k === name(t).toLowerCase();
+  };
+  const report: PolicyReport = {
+    problems: [],
+    readable: [],
+    writable: [],
+    hidden: [],
+    hiddenColumns: [],
+  };
+
+  for (const key of Object.keys(policy.tables)) {
+    if (!tables.some((t) => matches(key, t))) {
+      report.problems.push(`policy.tables names "${key}", which is not in the schema`);
+    }
+  }
+  for (const entry of policy.denyColumns) {
+    const dot = entry.lastIndexOf('.');
+    const [table, column] = [entry.slice(0, dot), entry.slice(dot + 1).toLowerCase()];
+    const bare = table.split('.').pop()!.toLowerCase();
+    const candidates = table === '*' ? tables : tables.filter((t) => t.name.toLowerCase() === bare);
+    if (!candidates.some((t) => t.columns.some((c) => c.name.toLowerCase() === column))) {
+      report.problems.push(`denyColumns has "${entry}", which matches no column in the schema`);
+    }
+  }
+  for (const t of tables) {
+    const access = tableAccess(policy, t.schema ?? 'null', t.name);
+    const bucket = access === 'write' ? 'writable' : access === 'read' ? 'readable' : 'hidden';
+    report[bucket].push(name(t));
+    if (access !== 'none') {
+      for (const c of t.columns) {
+        if (isColumnDenied(policy, t.name, c.name))
+          report.hiddenColumns.push(`${name(t)}.${c.name}`);
+      }
+    }
+  }
+  return report;
 }

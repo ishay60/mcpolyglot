@@ -61,10 +61,9 @@ async function setup(opts: Partial<OpenApiConnectorOptions> = {}, response?: () 
 describe('openapi connector', () => {
   it('exposes only operations whose method is allowed', async () => {
     const { c, call, calls } = await setup();
-    const snap = await c.introspect();
-    expect(snap.kind === 'openapi' && snap.operations.map((o) => o.operationId)).toEqual([
-      'getUser',
-    ]);
+    const list = c.listPrimitiveTools().find((t) => t.name === 'api.list_operations')!;
+    const listed = (await list.handler({}, ctx)).content[0]!.data as { operationId: string }[];
+    expect(listed.map((o) => o.operationId)).toEqual(['getUser']);
     await expect(call({ operationId: 'deleteUser', path: { id: 1 } })).rejects.toMatchObject({
       code: 'not_found',
     });

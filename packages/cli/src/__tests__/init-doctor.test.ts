@@ -3,9 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { TableSchema } from '@mcpolyglot/core';
-import { PolicySchema, SqliteDialect } from '@mcpolyglot/connector-sql';
+import { checkPolicy, PolicySchema, SqliteDialect } from '@mcpolyglot/connector-sql';
 import { generatePolicy, initCommand } from '../commands/init.js';
-import { checkPolicy } from '../commands/doctor.js';
 
 let canRun = true;
 try {
@@ -65,11 +64,11 @@ d('init <url> / doctor policy checks against SQLite', () => {
 
   it('doctor flags policy keys and denyColumns that are not in the schema', () => {
     const r = checkPolicy(
-      {
+      PolicySchema.parse({
         defaultAccess: 'none',
         tables: { customers: 'read', accounts: 'write', ledger: 'read' },
         denyColumns: ['customers.ssn', 'customers.pin', '*.nope'],
-      },
+      }),
       tables,
     );
     expect(r.problems).toEqual([
@@ -84,6 +83,6 @@ d('init <url> / doctor policy checks against SQLite', () => {
   });
 
   it('doctor reports a clean generated policy with no problems', () => {
-    expect(checkPolicy(generatePolicy(tables), tables).problems).toEqual([]);
+    expect(checkPolicy(PolicySchema.parse(generatePolicy(tables)), tables).problems).toEqual([]);
   });
 });

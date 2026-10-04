@@ -1,12 +1,6 @@
 import pc from 'picocolors';
 import { loadConfig, looksLikeLiteralCredential } from '@mcpolyglot/config';
-import type { TableSchema } from '@mcpolyglot/core';
-import {
-  isColumnDenied,
-  PolicySchema,
-  tableAccess,
-  type SqlConnector,
-} from '@mcpolyglot/connector-sql';
+import { PolicySchema } from '@mcpolyglot/connector-sql';
 import { buildServerFromConfig } from '../factory.js';
 import { doctorAgents } from './doctor-agents.js';
 import {
@@ -77,7 +71,7 @@ export async function doctorCommand(opts: DoctorOptions): Promise<boolean> {
 
   section('Sources', stdoutSink);
   const { connectors, server } = await buildServerFromConfig(cfg);
-  for (const [i, c] of connectors.entries()) {
+  for (const c of connectors) {
     try {
       await c.init({
         logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
@@ -96,18 +90,14 @@ export async function doctorCommand(opts: DoctorOptions): Promise<boolean> {
           `      ${sym.bullet} ${pc.bold(t.name)}  ${pc.dim('[')}${pc.cyan(t.scopes.join(', '))}${pc.dim(']')}\n`,
         );
       }
-      const src = cfg.sources[i];
-      if (c.kind === 'sql' && src && src.kind !== 'mongo' && src.kind !== 'openapi') {
-        const snap = await c.introspect();
-        if (snap.kind === 'sql' && !printPolicyReport(checkPolicy(src.policy, snap.tables))) {
-          allOk = false;
+      const diagnosis = await c.diagnose?.();
+      if (diagnosis) {
+        for (const [label, items] of Object.entries(diagnosis.facts)) {
+          bullet(pc.dim(label), items.length ? items.join(', ') : pc.dim('none'), stdoutSink);
         }
-        // The classifier is defense-in-depth; the DB grant is the control. A user that can
-        // read server files or is superuser makes the policy advisory, so doctor fails.
-        const privs = await (c as SqlConnector).auditPrivileges();
-        for (const p of privs) {
+        for (const p of diagnosis.problems) {
           allOk = false;
-          err('privileges', p, stdoutSink);
+          err(p.check, p.message, stdoutSink);
         }
       }
       await c.close();
@@ -131,66 +121,4 @@ export async function doctorCommand(opts: DoctorOptions): Promise<boolean> {
     stdoutSink,
   );
   return allOk;
-}
-
-export interface PolicyReport {
-  problems: string[];
-  readable: string[];
-  writable: string[];
-  hidden: string[];
-  hiddenColumns: string[];
-}
-
-/** Check a source's policy against its live schema. `policy` must already parse. */
-export function checkPolicy(raw: unknown, tables: TableSchema[]): PolicyReport {
-  const policy = PolicySchema.parse(raw ?? {});
-  const name = (t: TableSchema) => (t.schema ? `${t.schema}.${t.name}` : t.name);
-  const matches = (key: string, t: TableSchema) => {
-    const k = key.toLowerCase();
-    return k === t.name.toLowerCase() || k === name(t).toLowerCase();
-  };
-  const report: PolicyReport = {
-    problems: [],
-    readable: [],
-    writable: [],
-    hidden: [],
-    hiddenColumns: [],
-  };
-
-  for (const key of Object.keys(policy.tables)) {
-    if (!tables.some((t) => matches(key, t))) {
-      report.problems.push(`policy.tables names "${key}", which is not in the schema`);
-    }
-  }
-  for (const entry of policy.denyColumns) {
-    const dot = entry.lastIndexOf('.');
-    const [table, column] = [entry.slice(0, dot), entry.slice(dot + 1).toLowerCase()];
-    const bare = table.split('.').pop()!.toLowerCase();
-    const candidates = table === '*' ? tables : tables.filter((t) => t.name.toLowerCase() === bare);
-    if (!candidates.some((t) => t.columns.some((c) => c.name.toLowerCase() === column))) {
-      report.problems.push(`denyColumns has "${entry}", which matches no column in the schema`);
-    }
-  }
-  for (const t of tables) {
-    const access = tableAccess(policy, t.schema ?? 'null', t.name);
-    const bucket = access === 'write' ? 'writable' : access === 'read' ? 'readable' : 'hidden';
-    report[bucket].push(name(t));
-    if (access !== 'none') {
-      for (const c of t.columns) {
-        if (isColumnDenied(policy, t.name, c.name))
-          report.hiddenColumns.push(`${name(t)}.${c.name}`);
-      }
-    }
-  }
-  return report;
-}
-
-function printPolicyReport(r: PolicyReport): boolean {
-  const list = (xs: string[]) => (xs.length ? xs.join(', ') : pc.dim('none'));
-  bullet(pc.dim('readable'), list(r.readable), stdoutSink);
-  bullet(pc.dim('writable'), list(r.writable), stdoutSink);
-  bullet(pc.dim('hidden'), list(r.hidden), stdoutSink);
-  bullet(pc.dim('hidden columns'), list(r.hiddenColumns), stdoutSink);
-  for (const p of r.problems) err('policy', p, stdoutSink);
-  return r.problems.length === 0;
 }
