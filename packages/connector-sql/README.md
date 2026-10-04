@@ -10,8 +10,6 @@ For every SQL source mcpolyglot generates:
 - `<id>.describe_table` — one table's columns, types, and primary key.
 - `<id>.query` — read-only SQL with parameterized args, row cap, and timeout.
 
-(Opt-in per-table tools like `users.find_by_email` are scaffolded by `mcpolyglot init` and land fully in Wave 3.)
-
 ## How read-only is enforced
 
 Three layers, each enough on its own for the common case:

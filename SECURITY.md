@@ -91,4 +91,3 @@ Idempotency keys and rate-limit counters live in process memory. They do not sur
 - A timed-out call returns to the agent at the limit, but the abandoned query keeps running until the database's own timeout stops it. SQLite (`better-sqlite3`) is synchronous and blocks the process until the query finishes, so a slow SQLite query cannot be interrupted.
 - The HTTP transport defaults to a shared bearer token; configure `agents` for per-agent tokens, sources, scopes and policy. Without `agents`, the audit `agentId` is client-asserted (header / `clientInfo`). OAuth mode verifies JWTs (signature, `iss`, `aud`, `exp`) but does not map token claims to scopes or agents yet, and cannot be combined with `agents`.
 - Agent config (including revocation) is read at startup; restart `serve` after revoking a token. Rate limits are per agent but still in-process.
-- Per-table write tools (Wave 3) will require explicit scope opt-in and do not yet support row-level filters.
