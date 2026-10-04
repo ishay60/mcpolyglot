@@ -1,5 +1,12 @@
 # @mcpolyglot/security
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [61e5457]
+  - @mcpolyglot/core@0.5.0
+
 ## 0.2.0
 
 ### Minor Changes
