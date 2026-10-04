@@ -143,19 +143,6 @@ export function headerBar(opts: HeaderOptions, sink: Sink = stderrSink): void {
   sink('');
 }
 
-/**
- * Minimal banner without the box — kept for callers that want the older,
- * lighter look (e.g. nested output). New code should prefer `headerBar`.
- */
-export function banner(opts: { version: string; tagline?: string }, sink: Sink = stderrSink): void {
-  const triangle = pc.cyan('▲');
-  const ver = pc.dim(`v${opts.version}`);
-  sink('');
-  sink(`  ${triangle}  ${pc.bold(wordmark())}  ${ver}`);
-  if (opts.tagline) sink(`     ${pc.dim(opts.tagline)}`);
-  sink('');
-}
-
 /* ────────────────────────────────────────────────────────────────────── */
 /*  Status lines                                                          */
 /* ────────────────────────────────────────────────────────────────────── */
@@ -203,10 +190,6 @@ export function section(title: string, sink: Sink = stderrSink): void {
 export function kv(label: string, value: string, sink: Sink = stderrSink): void {
   const pad = label.padEnd(8);
   sink(`  ${sym.arrow}  ${pc.bold(pad)} ${value}`);
-}
-
-export function divider(sink: Sink = stderrSink): void {
-  sink(`  ${pc.dim('─'.repeat(termWidth()))}`);
 }
 
 /** "ready in 123 ms" — Copilot-style ready chip + dim duration. */

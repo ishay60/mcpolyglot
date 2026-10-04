@@ -206,7 +206,6 @@ export default {
       kind: '${opts.kind}',
       url: '${opts.url}',
       scopes: ['schema:read', 'tables:read', 'query:raw'],
-      perEntityTools: { enabled: false },
       limits: { rowCap: 200, timeoutMs: 10_000, maxBytes: 262144 },
       redact: {
         columns: [],

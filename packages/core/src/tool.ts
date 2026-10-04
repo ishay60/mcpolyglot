@@ -20,7 +20,7 @@ export const ALL_SCOPES = [
   'http:call',
 ] as const;
 
-/** A capability a tool requires from the calling session. Checked by `ScopeGuard`. */
+/** A capability a tool requires from the calling session. Checked before the handler runs. */
 export type Scope = (typeof ALL_SCOPES)[number];
 
 /** Scopes granted to a session by default. Excludes anything write-shaped. */
@@ -86,8 +86,7 @@ export type ToolHandler<S extends AnyZodSchema = AnyZodSchema> = (
 ) => Promise<ToolResult>;
 
 /**
- * The contract every connector returns from `listPrimitiveTools()` /
- * `generatePerEntityTools()`. The `handler` is the only point where the connector
+ * The contract every connector returns from `listPrimitiveTools()`. The `handler` is the only point where the connector
  * touches the data source — everything else (auth, redaction, audit) is the pipeline's job.
  *
  * @example

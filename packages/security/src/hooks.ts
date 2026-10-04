@@ -1,5 +1,5 @@
-import type { Scope, ToolResult, SecurityHooks } from '@mcpolyglot/core';
-import { ScopeGuard } from './scope-guard.js';
+import type { ToolResult, SecurityHooks } from '@mcpolyglot/core';
+import { checkScopes } from './scope-guard.js';
 import { Redactor, type RedactionRule, type ColumnDenyEntry } from './redactor.js';
 import { RateLimiter, type RateLimitOptions } from './rate-limiter.js';
 import { AuditLogger, type AuditLoggerOptions } from './audit.js';
@@ -31,16 +31,13 @@ export interface DefaultHookOptions {
  * ```
  */
 export function defaultSecurityHooks(opts: DefaultHookOptions = {}): SecurityHooks {
-  const guard = new ScopeGuard();
   const limiter = new RateLimiter(opts.rateLimit);
   const redactor = new Redactor(opts.redactor);
   const audit = new AuditLogger(opts.audit);
   const wrapMode: WrapMode = opts.wrapMode ?? 'strict';
 
   return {
-    checkScopes(toolName: string, required: readonly Scope[], granted: ReadonlySet<Scope>) {
-      guard.check(toolName, required, granted);
-    },
+    checkScopes,
     checkRateLimit(toolName: string, sessionId: string) {
       return limiter.check(toolName, sessionId);
     },
@@ -55,55 +52,6 @@ export function defaultSecurityHooks(opts: DefaultHookOptions = {}): SecurityHoo
     },
     async audit(entry) {
       await audit.append(entry as unknown as Record<string, unknown>);
-    },
-  };
-}
-
-/**
- * Compose multiple `SecurityHooks` objects into one. Each phase runs through the
- * provided hooks in order — useful for adding custom audit sinks or extra redaction
- * passes alongside the defaults.
- */
-export function composeHooks(...hooks: SecurityHooks[]): SecurityHooks {
-  return {
-    checkScopes(toolName, required, granted) {
-      for (const h of hooks) h.checkScopes(toolName, required, granted);
-    },
-    async checkRateLimit(toolName, sessionId) {
-      const releases: Array<() => void> = [];
-      try {
-        for (const h of hooks) {
-          const r = await h.checkRateLimit(toolName, sessionId);
-          if (r) releases.push(r);
-        }
-      } catch (err) {
-        for (const r of releases) r();
-        throw err;
-      }
-      return () => releases.forEach((r) => r());
-    },
-    redact(toolName, result) {
-      let acc = result;
-      let count = 0;
-      for (const h of hooks) {
-        const r = h.redact(toolName, acc);
-        acc = r.result;
-        count += r.redactionsApplied;
-      }
-      return { result: acc, redactionsApplied: count };
-    },
-    enforceSize(toolName, result, maxBytes) {
-      let acc = result;
-      for (const h of hooks) acc = h.enforceSize(toolName, acc, maxBytes);
-      return acc;
-    },
-    wrapUntrusted(result) {
-      let acc = result;
-      for (const h of hooks) acc = h.wrapUntrusted(acc);
-      return acc;
-    },
-    async audit(entry) {
-      for (const h of hooks) await h.audit(entry);
     },
   };
 }

@@ -9,7 +9,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['**/src/**/*.ts'],
-      exclude: ['.claude/**', '**/__tests__/**', 'packages/testkit/**', 'packages/cli/src/bin.ts'],
+      exclude: ['.claude/**', '**/__tests__/**', 'packages/cli/src/bin.ts'],
       reporter: ['text-summary', 'json-summary'],
     },
   },

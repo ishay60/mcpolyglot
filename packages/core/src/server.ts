@@ -3,7 +3,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { z } from 'zod';
-import type { Connector, PerEntityConfig } from './connector.js';
+import type { Connector } from './connector.js';
 import type { Transport } from './transport.js';
 import {
   type Scope,
@@ -80,8 +80,6 @@ export interface McpolyglotServerOptions {
   name?: string;
   version?: string;
   connectors: Connector[];
-  /** Per-source per-entity configuration. Keyed by `connector.id`. */
-  perEntity?: Record<string, PerEntityConfig>;
   /** Scopes granted to the calling session. Defaults to `DEFAULT_SCOPES` (read-only). */
   scopes?: readonly Scope[];
   security: SecurityServices;
@@ -142,7 +140,6 @@ export class McpolyglotServer {
   private readonly info: { name: string; version: string };
   private readonly tools = new Map<string, ToolDefinition>();
   private readonly connectors: Connector[];
-  private readonly perEntity: Record<string, PerEntityConfig>;
   private readonly scopes: Set<Scope>;
   private readonly agents: Map<string, AgentGrant & { tools: Map<string, ToolDefinition> }>;
   private readonly security: SecurityServices;
@@ -152,7 +149,6 @@ export class McpolyglotServer {
 
   constructor(opts: McpolyglotServerOptions) {
     this.connectors = opts.connectors;
-    this.perEntity = opts.perEntity ?? {};
     this.scopes = new Set(opts.scopes ?? DEFAULT_SCOPES);
     this.security = opts.security;
     this.logger = opts.logger ?? makeNoopLogger();
@@ -225,8 +221,7 @@ export class McpolyglotServer {
   }
 
   private toolsOf(c: Connector): ToolDefinition[] {
-    const cfg = this.perEntity[c.id];
-    return [...c.listPrimitiveTools(), ...(cfg?.enabled ? c.generatePerEntityTools(cfg) : [])];
+    return c.listPrimitiveTools();
   }
 
   /**

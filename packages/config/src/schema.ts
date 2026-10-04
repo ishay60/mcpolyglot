@@ -3,23 +3,9 @@ import { extname, isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import { ConfigError } from '@mcpolyglot/core';
+import { ALL_SCOPES, ConfigError } from '@mcpolyglot/core';
 
-const ScopeSchema = z.enum([
-  'schema:read',
-  'tables:read',
-  'tables:write',
-  'query:raw',
-  'http:call',
-]);
-
-const PerEntitySchema = z
-  .object({
-    enabled: z.boolean().default(false),
-    include: z.array(z.string()).optional(),
-    exclude: z.array(z.string()).optional(),
-  })
-  .default({ enabled: false });
+const ScopeSchema = z.enum(ALL_SCOPES);
 
 const RedactSchema = z
   .object({
@@ -54,7 +40,6 @@ const SqlSourceSchema = z.object({
   kind: z.enum(['postgres', 'mysql', 'mariadb', 'sqlite']),
   url: z.string().min(1),
   scopes: z.array(ScopeSchema).default(['schema:read', 'tables:read']),
-  perEntityTools: PerEntitySchema,
   limits: LimitsSchema,
   redact: RedactSchema,
   /** Access policy; validated strictly by `@mcpolyglot/connector-sql` at startup. */
@@ -170,7 +155,7 @@ export const ConfigSchema = z.object({
     .default({ defaultPerMinute: 30, maxConcurrent: 5 }),
   security: z
     .object({
-      wrapMode: z.enum(['strict', 'minimal', 'off']).default('strict'),
+      wrapMode: z.enum(['strict', 'off']).default('strict'),
     })
     .default({ wrapMode: 'strict' }),
   /** Per-agent tokens, sources and scopes for the HTTP transport. Ignored under stdio. */
@@ -200,7 +185,6 @@ export type TransportConfig = z.infer<typeof TransportSchema>;
  *     kind: 'postgres',
  *     url: '${env:DATABASE_URL}',
  *     scopes: ['schema:read', 'tables:read', 'query:raw'],
- *     perEntityTools: { enabled: false },
  *     limits: { rowCap: 200, timeoutMs: 10_000, maxBytes: 262144 },
  *     redact: { columns: ['public.users.password_hash'], patterns: [] },
  *   }],

@@ -19,7 +19,6 @@ function fakeConnector(): Connector {
     close: async () => {},
     health: async () => ({ ok: true, latencyMs: 0 }),
     introspect: async () => ({ kind: 'sql', tables: [] }),
-    generatePerEntityTools: () => [],
     listPrimitiveTools: () => [
       {
         name: 'fake.ok',

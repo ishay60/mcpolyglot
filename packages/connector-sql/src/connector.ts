@@ -2,7 +2,6 @@ import { z } from 'zod';
 import type {
   Connector,
   ConnectorInitCtx,
-  PerEntityConfig,
   SchemaSnapshot,
   TableSchema,
   ToolDefinition,
@@ -293,11 +292,6 @@ export class SqlConnector implements Connector {
 
   private timeoutMs(ctx: { limits: { timeoutMs: number } }): number {
     return Math.min(ctx.limits.timeoutMs, this.policy.statementTimeoutMs ?? Infinity);
-  }
-
-  generatePerEntityTools(_cfg: PerEntityConfig): ToolDefinition[] {
-    // Not implemented: opt-in per-table tools would be generated from the cached schema.
-    return [];
   }
 
   private async cachedOrFetchTables(): Promise<TableSchema[]> {

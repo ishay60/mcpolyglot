@@ -4,7 +4,7 @@ The non-bypassable security middleware for [mcpolyglot](https://github.com/ishay
 
 ## What's in here
 
-- **`ScopeGuard`** — refuses tools whose required scopes aren't in the granted set.
+- **`checkScopes`** — refuses tools whose required scopes aren't in the granted set.
 - **`RateLimiter`** — token bucket per session per tool, plus a max-concurrent gate.
 - **`Redactor`** — built-in regex set (emails, JWTs, AWS access keys, GitHub tokens, SSNs, credit-card numbers) plus per-table column deny lists.
 - **`AuditLogger`**: append-only JSONL audit sink. See [Audit log](#audit-log).
@@ -48,7 +48,6 @@ Tests: `src/__tests__/audit.test.ts` (sinks, scrubbing) and `packages/core/src/_
 
 - **`wrapUntrusted` / `enforceSize`** — `<mcpolyglot-data>` prompt-injection wrapper and a hard byte cap on serialized output.
 - **`defaultSecurityHooks(opts)`** — composes all of the above into the `SecurityHooks` shape `McpolyglotServer` expects.
-- **`composeHooks(...hooks)`** — chain custom hooks alongside the defaults.
 
 ## Why a separate package
 

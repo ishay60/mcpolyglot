@@ -3,7 +3,6 @@ import type {
   CollectionSchema,
   Connector,
   ConnectorInitCtx,
-  PerEntityConfig,
   SchemaSnapshot,
   ToolDefinition,
 } from '@mcpolyglot/core';
@@ -179,10 +178,6 @@ export class MongoConnector implements Connector {
         },
       },
     ];
-  }
-
-  generatePerEntityTools(_cfg: PerEntityConfig): ToolDefinition[] {
-    return [];
   }
 
   private async cachedOrFetchCollections(): Promise<CollectionSchema[]> {

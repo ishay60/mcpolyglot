@@ -269,22 +269,6 @@ importers:
         specifier: ^2.1.1
         version: 2.1.9(@types/node@25.6.0)
 
-  packages/testkit:
-    dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.30.0
-        version: 1.30.0(zod@4.4.3)
-    devDependencies:
-      '@types/node':
-        specifier: ^25.6.0
-        version: 25.6.0
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
-      vitest:
-        specifier: ^2.1.1
-        version: 2.1.9(@types/node@25.6.0)
-
 packages:
 
   '@ampproject/remapping@2.3.0':

@@ -2,7 +2,6 @@ export type {
   Connector,
   ConnectorInitCtx,
   ConnectorKind,
-  PerEntityConfig,
   SchemaSnapshot,
   TableSchema,
   CollectionSchema,
