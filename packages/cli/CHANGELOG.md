@@ -1,5 +1,11 @@
 # @mcpolyglot/cli
 
+## 0.4.2
+
+### Patch Changes
+
+- cb3ad3b: Adds `mcpName` to the package so the server can be listed in the official MCP Registry.
+
 ## 0.4.1
 
 ### Patch Changes
