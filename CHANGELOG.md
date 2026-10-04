@@ -16,6 +16,17 @@ How releases work in this repo:
 
 ## Unreleased
 
+- `@mcpolyglot/connector-openapi` — new package: `list_operations` / `describe_operation` / `call` for a REST API described by an OpenAPI 3 spec (JSON or YAML). Method allow-list, host pinned to `baseUrl`, credentials from config only.
+
+## 0.3.0 — 2026-10-04
+
+`cli`, `core`, `connector-sql` at 0.3.0; `config` at 0.2.0; `connector-mongo` at 0.2.1; `security` at 0.1.0; new `client` at 0.1.0.
+
+- `@mcpolyglot/connector-sql` — policy layer: per-table `read`/`write`/`none`, `denyColumns`, dry-run, reasons on deny. DB-level read-only connection unless a table is `write`; new `<id>.execute` tool with `maxWritesPerCall`, idempotency keys, pool and concurrency limits.
+- `@mcpolyglot/core` — per-agent HTTP tokens (sha256-hashed) with their own sources, scopes and narrowed policy; audit log records agent and allow/deny decision. The HTTP transport now serves more than one request per process. **Breaking for custom transports:** `Transport.start` receives a `() => Server` factory.
+- `@mcpolyglot/cli` — `init <url>` introspects a database into a read-only policy; `doctor` validates policies against the live schema; `token create|hash`.
+- `@mcpolyglot/client` — new package: typed `listTables` / `query` over HTTP.
+
 - `@mcpolyglot/connector-sql` — classifier hardening: whole-row references (`SELECT u FROM users u`, `to_jsonb(u)`, `u::text`) now hit `denyColumns`; denied keys are stripped from JSON/record values in results; `SELECT ... INTO`, server-access functions (`pg_read_file`, `LOAD_FILE`, `dblink`, `pg_sleep`, ...), system catalogs, and `WHERE 1=1` writes are denied.
 - `@mcpolyglot/cli` — `doctor` fails when the database user is a superuser or holds server file privileges (`pg_read_server_files`, MySQL `FILE`), since the classifier is defense-in-depth and the grant is the control.
 - `@mcpolyglot/core` — OAuth mode for the Streamable HTTP transport: JWTs verified against the issuer's JWKS (`iss`, `aud`, `exp`/`nbf`) (#28).

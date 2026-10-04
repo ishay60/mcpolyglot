@@ -28,6 +28,7 @@
     "@clack/prompts": "^1.7.0",
     "@mcpolyglot/config": "workspace:^",
     "@mcpolyglot/connector-mongo": "workspace:^",
+    "@mcpolyglot/connector-openapi": "workspace:^",
     "@mcpolyglot/connector-sql": "workspace:^",
     "@mcpolyglot/core": "workspace:^",
     "@mcpolyglot/security": "workspace:^",
