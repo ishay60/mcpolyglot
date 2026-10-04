@@ -1,6 +1,6 @@
 {
   "name": "@mcpolyglot/config",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Config schema and loader for mcpolyglot. Validates user config and resolves secrets via env / file / OS keychain refs.",
   "license": "MIT",
   "repository": {

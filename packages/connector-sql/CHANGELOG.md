@@ -1,5 +1,19 @@
 # @mcpolyglot/connector-sql
 
+## 0.3.1
+
+### Patch Changes
+
+- ea53e8f: Removed surface that did nothing:
+
+  - **Per-entity tools.** No connector ever generated any. Gone: `Connector.generatePerEntityTools`, `PerEntityConfig`, the server's `perEntity` option and the `perEntityTools` source field. A `perEntityTools` key left in a JSON/YAML config is ignored; in a typed `.ts` config, delete the line.
+  - **`security.wrapMode: 'minimal'`.** Use `'strict'` (default) or `'off'`.
+  - **`@mcpolyglot/security`**: `composeHooks` is removed (it had no callers), and the `ScopeGuard` class is now a `checkScopes(toolName, required, granted)` function.
+  - **`@mcpolyglot/testkit`** is no longer part of the repo; nothing used it.
+
+- Updated dependencies [ea53e8f]
+  - @mcpolyglot/core@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
