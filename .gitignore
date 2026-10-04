@@ -35,3 +35,6 @@ audit.log
 
 coverage/
 results.json
+
+# Claude Code local state
+.claude/
