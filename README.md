@@ -118,7 +118,7 @@ Wire it into Claude Desktop (`~/Library/Application Support/Claude/claude_deskto
 
 Restart Claude Desktop and try: _"List the tables in my database, then sample 5 rows from `users`."_
 
-End-to-end recipes per connector live under [`examples/`](./examples) (Postgres, MySQL, SQLite, MongoDB, Streamable HTTP, Docker).
+End-to-end recipes per connector live under [`examples/`](./examples) (Postgres, MySQL, SQLite, MongoDB, OpenAPI, Streamable HTTP, Docker).
 
 ## Policy examples
 
@@ -221,6 +221,7 @@ packages/
   testkit/           MCP conformance harness
 examples/
   postgres/  sqlite/  mysql/  mongo/   stdio
+  openapi/                             stdio, a slice of the GitHub REST API
   http/                                streamable-http + bearer / OAuth
   docker-compose/                      Postgres + mcpolyglot in containers
   readonly-analytics/                  read-only policy, hidden tables

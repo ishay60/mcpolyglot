@@ -1,0 +1,26 @@
+# A hand-picked slice of the GitHub REST API. The agent can call these operations and nothing else.
+openapi: 3.0.3
+info:
+  title: GitHub (subset)
+  version: '1'
+paths:
+  /repos/{owner}/{repo}:
+    parameters:
+      - { name: owner, in: path, required: true, schema: { type: string } }
+      - { name: repo, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getRepo
+      summary: Get a repository
+    delete:
+      operationId: deleteRepo
+      summary: Delete a repository (in the spec, but not callable - DELETE is not in allowMethods)
+  /repos/{owner}/{repo}/issues:
+    parameters:
+      - { name: owner, in: path, required: true, schema: { type: string } }
+      - { name: repo, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: listIssues
+      summary: List issues and pull requests of a repository
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [open, closed, all] } }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100 } }

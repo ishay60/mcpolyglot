@@ -16,6 +16,10 @@ How releases work in this repo:
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-04
+
+`cli` at 0.4.0; new `connector-openapi` at 0.1.0.
+
 - `@mcpolyglot/connector-openapi` — new package: `list_operations` / `describe_operation` / `call` for a REST API described by an OpenAPI 3 spec (JSON or YAML). Method allow-list, host pinned to `baseUrl`, credentials from config only.
 
 ## 0.3.0 — 2026-10-04

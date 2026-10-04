@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "mcpolyglot": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@mcpolyglot/cli",
+        "serve",
+        "--config",
+        "/abs/path/to/examples/openapi/mcpolyglot.config.ts"
+      ]
+    }
+  }
+}

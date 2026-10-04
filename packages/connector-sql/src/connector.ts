@@ -296,7 +296,7 @@ export class SqlConnector implements Connector {
   }
 
   generatePerEntityTools(_cfg: PerEntityConfig): ToolDefinition[] {
-    // Wave 3 — opt-in per-table list/get/count tools generated from cached schema.
+    // Not implemented: opt-in per-table tools would be generated from the cached schema.
     return [];
   }
 
