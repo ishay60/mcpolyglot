@@ -1,6 +1,6 @@
 {
   "name": "@mcpolyglot/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "mcpolyglot command-line interface. Initializes config, serves the MCP server (stdio or HTTP), and validates connectivity.",
   "license": "MIT",
   "repository": {
