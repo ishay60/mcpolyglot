@@ -1,5 +1,12 @@
 # @mcpolyglot/config
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [61e5457]
+  - @mcpolyglot/core@0.5.0
+
 ## 0.3.0
 
 ### Minor Changes

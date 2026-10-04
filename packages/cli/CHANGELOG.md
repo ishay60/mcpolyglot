@@ -1,5 +1,21 @@
 # @mcpolyglot/cli
 
+## 0.4.3
+
+### Patch Changes
+
+- 61e5457: **Fix:** each source's `limits` (row cap, timeout, byte cap) now apply to that source's tools. Previously the first source's limits were used for every tool and the others were ignored. `McpolyglotServer` takes `security.limits`, keyed by connector id.
+
+  `Connector.introspect()` and `SchemaSnapshot` are replaced by an optional `Connector.diagnose()`, which returns what `doctor` shows for a source: labelled facts and problems. The SQL connector reports its policy against the live schema and risky database privileges there; `SqlConnector.auditPrivileges()` is gone and `checkPolicy` is now exported from `@mcpolyglot/connector-sql`. `doctor` output is unchanged.
+
+- Updated dependencies [61e5457]
+  - @mcpolyglot/core@0.5.0
+  - @mcpolyglot/connector-sql@0.4.0
+  - @mcpolyglot/connector-mongo@0.2.3
+  - @mcpolyglot/connector-openapi@0.1.2
+  - @mcpolyglot/config@0.3.1
+  - @mcpolyglot/security@0.2.1
+
 ## 0.4.2
 
 ### Patch Changes
