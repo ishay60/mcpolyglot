@@ -1,6 +1,6 @@
 {
   "name": "@mcpolyglot/connector-openapi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenAPI connector for mcpolyglot. Calls only operations in the spec, with a method allow-list and the host pinned to the configured base URL.",
   "license": "MIT",
   "repository": {
