@@ -1,6 +1,6 @@
 {
   "name": "@mcpolyglot/client",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Typed client for a running mcpolyglot HTTP server: list tables and run policy-checked queries from plain TypeScript, outside an MCP host.",
   "license": "MIT",
   "repository": {
