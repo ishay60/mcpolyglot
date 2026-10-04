@@ -16,10 +16,15 @@ How releases work in this repo:
 
 ## Unreleased
 
+## 0.5.0 — 2026-10-04
+
+`core` at 0.5.0; `connector-sql` at 0.4.0; `config` at 0.3.1; `security` at 0.2.1; `cli` at 0.4.3; `connector-mongo` at 0.2.3; `connector-openapi` at 0.1.2.
+
 - **Fix:** each source's `limits` now apply to its own tools; previously only the first source's limits were used.
 - `Connector.introspect()` is replaced by an optional `Connector.diagnose()`, which `doctor` prints for every source.
 
 - Removed surface that did nothing: per-entity tools (`perEntityTools`, `Connector.generatePerEntityTools`), `wrapMode: 'minimal'`, `composeHooks`, and the `@mcpolyglot/testkit` package. `ScopeGuard` is now a `checkScopes` function.
+- `@mcpolyglot/cli` — listed in the official MCP Registry as `io.github.ishay60/mcpolyglot`.
 
 ## 0.4.0 — 2026-10-04
 

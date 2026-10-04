@@ -7,12 +7,12 @@
     "source": "github",
     "subfolder": "packages/cli"
   },
-  "version": "0.4.2",
+  "version": "0.4.3",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@mcpolyglot/cli",
-      "version": "0.4.2",
+      "version": "0.4.3",
       "transport": {
         "type": "stdio"
       },
