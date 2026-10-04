@@ -1,5 +1,16 @@
 # @mcpolyglot/cli
 
+## 0.4.0
+
+### Minor Changes
+
+- c840340: New `@mcpolyglot/connector-openapi`: `kind: 'openapi'` sources now work. Exposes `<id>.list_operations`, `<id>.describe_operation` and `<id>.call` (scope `http:call`) for an OpenAPI 3 spec (JSON or YAML, file or URL). Only operations in the spec whose method is in `allowMethods` (default GET / HEAD / OPTIONS) can be called; requests are pinned to `baseUrl`, only declared path and query parameters are accepted, redirects are refused, and credentials come from config (`${env:...}` supported), never from the model.
+
+### Patch Changes
+
+- Updated dependencies [c840340]
+  - @mcpolyglot/connector-openapi@0.1.0
+
 ## 0.3.0
 
 ### Minor Changes
