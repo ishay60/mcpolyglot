@@ -145,17 +145,17 @@ Always denied, whatever the policy says: DDL, `GRANT`, `SET`, more than one stat
 
 ## What's in the box
 
-| Connector  | Status | Read-only enforcement                                                              |
-| ---------- | ------ | ---------------------------------------------------------------------------------- |
-| PostgreSQL | alpha  | policy classifier + `BEGIN READ ONLY` + `default_transaction_read_only` connection |
-| MySQL      | alpha  | policy classifier + AST gate + `START TRANSACTION READ ONLY` + read-only session   |
-| SQLite     | alpha  | policy classifier + `readonly` file handle + `query_only`                          |
-| MongoDB    | alpha  | `find` / `aggregate` only; `$out` / `$merge` rejected before the driver            |
-| OpenAPI    | wip    | method allow-list, host pinning                                                    |
+| Connector  | Status | Read-only enforcement                                                                                      |
+| ---------- | ------ | ---------------------------------------------------------------------------------------------------------- |
+| PostgreSQL | alpha  | policy classifier + `BEGIN READ ONLY` + `default_transaction_read_only` connection                         |
+| MySQL      | alpha  | policy classifier + AST gate + `START TRANSACTION READ ONLY` + read-only session                           |
+| SQLite     | alpha  | policy classifier + `readonly` file handle + `query_only`                                                  |
+| MongoDB    | alpha  | `find` / `aggregate` only; `$out` / `$merge` rejected before the driver                                    |
+| OpenAPI    | alpha  | only operations in the spec, method allow-list (GET / HEAD / OPTIONS by default), host pinned to `baseUrl` |
 
 **Transports**: `stdio` (Claude Desktop / Cursor / Claude Code) and Streamable HTTP with a bearer token, per-agent tokens, or OAuth (JWT / JWKS). Loopback by default, `/healthz` probe, structured JSON logs.
 
-**Tools, no glue code**: SQL connectors expose `list_tables` · `describe_table` · `query`, plus `execute` when the policy grants a `write` table. Mongo exposes `list_collections` · `describe_collection` · `find` · `aggregate`.
+**Tools, no glue code**: SQL connectors expose `list_tables` · `describe_table` · `query`, plus `execute` when the policy grants a `write` table. Mongo exposes `list_collections` · `describe_collection` · `find` · `aggregate`. OpenAPI exposes `list_operations` · `describe_operation` · `call`.
 
 ## Security model
 
@@ -184,7 +184,7 @@ Secrets come in only via `${env:NAME}` / `${file:./path}` / `${keychain:item}`; 
 
 ## Status
 
-**Alpha, actively maintained.** All four database connectors and both transports work end-to-end. CI runs every test against real Postgres 16, MySQL 8.4 and SQLite and fails if any test is skipped. The OpenAPI connector is next.
+**Alpha, actively maintained.** All four database connectors, the OpenAPI connector and both transports work end-to-end. CI runs every test against real Postgres 16, MySQL 8.4 and SQLite and fails if any test is skipped.
 
 <details>
 <summary>How mcpolyglot compares to alternatives</summary>
@@ -216,6 +216,7 @@ packages/
   security/          scopes, redaction, audit, rate limit, wrap
   connector-sql/     Postgres, MySQL/MariaDB, SQLite
   connector-mongo/   MongoDB
+  connector-openapi/ REST APIs described by an OpenAPI 3 spec
   client/            typed SDK client for a running HTTP server
   testkit/           MCP conformance harness
 examples/

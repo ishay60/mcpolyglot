@@ -23,6 +23,7 @@ import {
   SqliteDialect,
 } from '@mcpolyglot/connector-sql';
 import { MongoConnector } from '@mcpolyglot/connector-mongo';
+import { OpenApiConnector, type OpenApiAuth } from '@mcpolyglot/connector-openapi';
 
 export interface BuiltServer {
   server: McpolyglotServer;
@@ -174,8 +175,19 @@ async function buildConnector(src: SourceConfig): Promise<Connector> {
         ...(src.database ? { database: src.database } : {}),
       });
     }
-    case 'openapi':
-      throw new ConfigError('OpenAPI connector arrives in Wave 3.');
+    case 'openapi': {
+      const auth = { ...src.auth } as Record<string, string>;
+      for (const k of ['token', 'value', 'password']) {
+        if (auth[k] !== undefined) auth[k] = await resolveSecrets(auth[k]);
+      }
+      return new OpenApiConnector({
+        id: src.id,
+        spec: src.spec,
+        baseUrl: src.baseUrl,
+        auth: auth as OpenApiAuth,
+        allowMethods: src.allowMethods,
+      });
+    }
     default: {
       const _exhaustive: never = src;
       void _exhaustive;

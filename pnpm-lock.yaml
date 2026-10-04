@@ -50,6 +50,9 @@ importers:
       '@mcpolyglot/connector-mongo':
         specifier: workspace:^
         version: link:../connector-mongo
+      '@mcpolyglot/connector-openapi':
+        specifier: workspace:^
+        version: link:../connector-openapi
       '@mcpolyglot/connector-sql':
         specifier: workspace:^
         version: link:../connector-sql
@@ -157,6 +160,28 @@ importers:
       mongodb:
         specifier: ^7.5.0
         version: 7.5.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^2.1.1
+        version: 2.1.9(@types/node@25.6.0)
+
+  packages/connector-openapi:
+    dependencies:
+      '@mcpolyglot/core':
+        specifier: workspace:^
+        version: link:../core
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
