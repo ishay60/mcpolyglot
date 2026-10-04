@@ -11,7 +11,7 @@ You usually don't depend on this directly — install [`@mcpolyglot/cli`](https:
   scope check → rate limit → timeout → handler → redact → size cap → wrap → audit
   ```
   Connectors can't opt out.
-- **`Connector`** — the interface a data-source adapter implements (`init`, `close`, `health`, `introspect`, `listPrimitiveTools`).
+- **`Connector`** — the interface a data-source adapter implements (`init`, `close`, `health`, `listPrimitiveTools`, optional `diagnose`).
 - **`Transport`** — minimal contract; ships with `StdioTransport` and `StreamableHttpTransport`.
 - **`ToolDefinition`** — `{ name, description, inputSchema (zod), scopes, readOnly, handler }`.
 

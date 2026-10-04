@@ -2,7 +2,7 @@ export type {
   Connector,
   ConnectorInitCtx,
   ConnectorKind,
-  SchemaSnapshot,
+  ConnectorDiagnosis,
   TableSchema,
   CollectionSchema,
   OperationSchema,

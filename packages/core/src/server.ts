@@ -44,6 +44,8 @@ export interface SecurityHooks {
 export interface SecurityServices {
   hooks: SecurityHooks;
   defaultLimits: ToolExecLimits;
+  /** Limits per connector, keyed by `connector.id`. A connector not listed uses `defaultLimits`. */
+  limits?: Record<string, ToolExecLimits>;
   defaultScopes: readonly Scope[];
 }
 
@@ -139,6 +141,8 @@ interface Caller {
 export class McpolyglotServer {
   private readonly info: { name: string; version: string };
   private readonly tools = new Map<string, ToolDefinition>();
+  /** Tool name → the limits of the connector it came from. */
+  private readonly toolLimits = new Map<string, ToolExecLimits>();
   private readonly connectors: Connector[];
   private readonly scopes: Set<Scope>;
   private readonly agents: Map<string, AgentGrant & { tools: Map<string, ToolDefinition> }>;
@@ -188,7 +192,11 @@ export class McpolyglotServer {
   }
 
   async start(transport: Transport): Promise<void> {
-    for (const c of this.allConnectors()) await c.init({ logger: this.logger });
+    for (const c of this.allConnectors()) {
+      await c.init({ logger: this.logger });
+      const limits = this.security.limits?.[c.id];
+      if (limits) for (const tool of this.toolsOf(c)) this.toolLimits.set(tool.name, limits);
+    }
     for (const c of this.connectors) {
       for (const tool of this.toolsOf(c)) registerTool(this.tools, tool);
     }
@@ -271,6 +279,8 @@ export class McpolyglotServer {
     let decision: AuditEntry['decision'] = 'allow';
     let release: void | (() => void) = undefined;
 
+    const limits = this.toolLimits.get(def.name) ?? this.security.defaultLimits;
+
     try {
       // 1. scope check
       this.security.hooks.checkScopes(def.name, def.scopes, scopes);
@@ -280,13 +290,13 @@ export class McpolyglotServer {
 
       // 3. timeout
       const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), this.security.defaultLimits.timeoutMs);
+      const timer = setTimeout(() => ac.abort(), limits.timeoutMs);
 
       const ctx: ToolExecCtx = {
         sessionId: this.sessionId,
         scopes,
         signal: ac.signal,
-        limits: this.security.defaultLimits,
+        limits,
         logger: this.logger,
       };
 
@@ -309,11 +319,7 @@ export class McpolyglotServer {
       result = redacted.result;
 
       // 5. size cap
-      result = this.security.hooks.enforceSize(
-        def.name,
-        result,
-        this.security.defaultLimits.maxBytes,
-      );
+      result = this.security.hooks.enforceSize(def.name, result, limits.maxBytes);
 
       // 6. untrusted-data wrapper
       result = this.security.hooks.wrapUntrusted(result);

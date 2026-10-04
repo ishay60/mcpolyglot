@@ -51,14 +51,13 @@ export interface OperationSchema {
   requestBody?: { contentType: string; schemaRef?: string };
 }
 
-/**
- * Result of `Connector.introspect()`. Discriminated by `kind` so consumers can
- * narrow on the shape they expect.
- */
-export type SchemaSnapshot =
-  | { kind: 'sql'; tables: TableSchema[] }
-  | { kind: 'mongo'; collections: CollectionSchema[] }
-  | { kind: 'openapi'; operations: OperationSchema[] };
+/** What `mcpolyglot doctor` shows for a source beyond its health. */
+export interface ConnectorDiagnosis {
+  /** Labelled lists worth showing, e.g. `{ readable: ['users'], hidden: ['secrets'] }`. */
+  facts: Record<string, string[]>;
+  /** Anything here fails `doctor`. `check` names what was checked, e.g. `'policy'`. */
+  problems: Array<{ check: string; message: string }>;
+}
 
 /** Runtime context handed to a connector's `init()`. */
 export interface ConnectorInitCtx {
@@ -87,7 +86,6 @@ export interface ConnectorInitCtx {
  *   async init(ctx) {}            // open pool, verify connectivity
  *   async close() {}               // drain pool
  *   async health() { return { ok: true, latencyMs: 0 }; }
- *   async introspect() { return { kind: 'sql', tables: [] }; }
  *   listPrimitiveTools() { return []; }   // ToolDefinition[]
  * }
  * ```
@@ -100,10 +98,13 @@ export interface Connector {
   init(ctx: ConnectorInitCtx): Promise<void>;
   /** Drain the pool / driver. Called on `server.stop()`. Must be idempotent. */
   close(): Promise<void>;
-  /** Discover the source's schema. Used by primitive tools and `mcpolyglot doctor`. */
-  introspect(): Promise<SchemaSnapshot>;
   /** Tools always exposed for this source (e.g., `list_tables`, `query`). */
   listPrimitiveTools(): ToolDefinition[];
   /** Lightweight ping. Used by `mcpolyglot doctor` and HTTP `/healthz`. */
   health(): Promise<{ ok: boolean; latencyMs: number; details?: string }>;
+  /**
+   * Source-specific findings for `mcpolyglot doctor`: what the configured access exposes and
+   * anything wrong with it. Called after `init()`. Omit when there is nothing to report.
+   */
+  diagnose?(): Promise<ConnectorDiagnosis>;
 }

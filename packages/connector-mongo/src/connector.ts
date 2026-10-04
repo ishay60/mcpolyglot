@@ -3,7 +3,6 @@ import type {
   CollectionSchema,
   Connector,
   ConnectorInitCtx,
-  SchemaSnapshot,
   ToolDefinition,
 } from '@mcpolyglot/core';
 import { McpolyglotError } from '@mcpolyglot/core';
@@ -65,12 +64,6 @@ export class MongoConnector implements Connector {
     } catch (err) {
       return { ok: false, latencyMs: Date.now() - t0, details: (err as Error).message };
     }
-  }
-
-  async introspect(): Promise<SchemaSnapshot> {
-    const collections = await this.discoverCollections();
-    this.cachedCollections = collections;
-    return { kind: 'mongo', collections };
   }
 
   listPrimitiveTools(): ToolDefinition[] {

@@ -5,7 +5,6 @@ import type {
   Connector,
   ConnectorInitCtx,
   OperationSchema,
-  SchemaSnapshot,
   ToolDefinition,
 } from '@mcpolyglot/core';
 import { McpolyglotError } from '@mcpolyglot/core';
@@ -76,13 +75,6 @@ export class OpenApiConnector implements Connector {
     return this.ops
       ? { ok: true, latencyMs: 0, details: `${this.ops.size} operations` }
       : { ok: false, latencyMs: 0, details: 'spec not loaded' };
-  }
-
-  async introspect(): Promise<SchemaSnapshot> {
-    return {
-      kind: 'openapi',
-      operations: [...this.requireOps().values()].map(({ bodySchema: _b, ...op }) => op),
-    };
   }
 
   listPrimitiveTools(): ToolDefinition[] {

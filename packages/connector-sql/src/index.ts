@@ -9,6 +9,7 @@ export { PostgresDialect } from './dialects/postgres.js';
 export { MysqlDialect } from './dialects/mysql.js';
 export { SqliteDialect } from './dialects/sqlite.js';
 export {
+  checkPolicy,
   classify,
   DENIED_FUNCTIONS,
   narrowPolicy,
@@ -17,5 +18,6 @@ export {
   PolicySchema,
   type Policy,
   type PolicyDecision,
+  type PolicyReport,
   type Access,
 } from './policy.js';

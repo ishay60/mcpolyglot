@@ -16,6 +16,9 @@ How releases work in this repo:
 
 ## Unreleased
 
+- **Fix:** each source's `limits` now apply to its own tools; previously only the first source's limits were used.
+- `Connector.introspect()` is replaced by an optional `Connector.diagnose()`, which `doctor` prints for every source.
+
 - Removed surface that did nothing: per-entity tools (`perEntityTools`, `Connector.generatePerEntityTools`), `wrapMode: 'minimal'`, `composeHooks`, and the `@mcpolyglot/testkit` package. `ScopeGuard` is now a `checkScopes` function.
 
 ## 0.4.0 — 2026-10-04

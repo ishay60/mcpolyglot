@@ -237,11 +237,10 @@ d('sqlite end-to-end via SqlConnector', () => {
     expect(typeof h.latencyMs).toBe('number');
   });
 
-  it('introspect() returns a sql snapshot', async () => {
-    const snap = await connector.introspect();
-    expect(snap.kind).toBe('sql');
-    if (snap.kind !== 'sql') throw new Error('unexpected snapshot kind');
-    expect(snap.tables.length).toBe(2);
+  it('diagnose() reports what the policy exposes', async () => {
+    const d = await connector.diagnose();
+    expect(Object.values(d.facts).flat().length).toBeGreaterThan(0);
+    expect(d.problems).toEqual([]);
   });
 });
 

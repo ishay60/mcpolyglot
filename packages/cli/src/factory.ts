@@ -63,19 +63,16 @@ export async function buildServerFromConfig(
     wrapMode: cfg.security.wrapMode,
   });
 
-  // The first source's limits are the default execution envelope for every tool.
-  const defaultLimits = cfg.sources[0]?.limits ?? {
-    rowCap: 200,
-    timeoutMs: 10_000,
-    maxBytes: 256 * 1024,
-  };
+  // Each tool runs under its own source's limits; this is only the fallback.
+  const defaultLimits = { rowCap: 200, timeoutMs: 10_000, maxBytes: 256 * 1024 };
+  const limits = Object.fromEntries(cfg.sources.map((s) => [s.id, s.limits]));
 
   const server = new McpolyglotServer({
     name: cfg.server.name,
     version: cfg.server.version,
     connectors,
     scopes: collectScopes(cfg.sources),
-    security: { hooks, defaultLimits, defaultScopes: collectScopes(cfg.sources) },
+    security: { hooks, defaultLimits, limits, defaultScopes: collectScopes(cfg.sources) },
     ...(agents ? { agents } : {}),
     logger,
   });
