@@ -218,7 +218,6 @@ packages/
   connector-mongo/   MongoDB
   connector-openapi/ REST APIs described by an OpenAPI 3 spec
   client/            typed SDK client for a running HTTP server
-  testkit/           MCP conformance harness
 examples/
   postgres/  sqlite/  mysql/  mongo/   stdio
   openapi/                             stdio, a slice of the GitHub REST API

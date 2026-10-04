@@ -75,13 +75,10 @@ interface Connector {
   health(): Promise<{ ok: boolean; latencyMs: number; details?: string }>;
   introspect(): Promise<SchemaSnapshot>;
   listPrimitiveTools(): ToolDefinition[];
-  generatePerEntityTools(cfg: PerEntityConfig): ToolDefinition[];
 }
 ```
 
 Each `ToolDefinition` is a `{ name, description, inputSchema (zod), scopes, readOnly, handler }`. The handler is the only place a connector touches the data source — the rest is the pipeline's job.
-
-The split between `listPrimitiveTools()` (always exposed) and `generatePerEntityTools()` (opt-in, scaffolded by `mcpolyglot init`) keeps the default surface small and predictable while still letting users get `users.find_by_email`-style tools when they want them.
 
 ## Transports
 

@@ -60,18 +60,6 @@ export type SchemaSnapshot =
   | { kind: 'mongo'; collections: CollectionSchema[] }
   | { kind: 'openapi'; operations: OperationSchema[] };
 
-/**
- * Per-source configuration for opt-in per-entity tools (e.g., `users.find_by_email`).
- * When `enabled` is `false`, only primitive tools (`list_tables`, `query`, …) are exposed.
- */
-export interface PerEntityConfig {
-  enabled: boolean;
-  /** Glob-like patterns of entities (tables/collections) to include. Wins over `exclude` if both are set. */
-  include?: string[];
-  /** Glob-like patterns of entities to exclude. */
-  exclude?: string[];
-}
-
 /** Runtime context handed to a connector's `init()`. */
 export interface ConnectorInitCtx {
   logger: {
@@ -101,7 +89,6 @@ export interface ConnectorInitCtx {
  *   async health() { return { ok: true, latencyMs: 0 }; }
  *   async introspect() { return { kind: 'sql', tables: [] }; }
  *   listPrimitiveTools() { return []; }   // ToolDefinition[]
- *   generatePerEntityTools() { return []; }
  * }
  * ```
  */
@@ -117,8 +104,6 @@ export interface Connector {
   introspect(): Promise<SchemaSnapshot>;
   /** Tools always exposed for this source (e.g., `list_tables`, `query`). */
   listPrimitiveTools(): ToolDefinition[];
-  /** Per-entity tools to expose when `cfg.enabled` is `true` (e.g., `users.find_by_email`). */
-  generatePerEntityTools(cfg: PerEntityConfig): ToolDefinition[];
   /** Lightweight ping. Used by `mcpolyglot doctor` and HTTP `/healthz`. */
   health(): Promise<{ ok: boolean; latencyMs: number; details?: string }>;
 }

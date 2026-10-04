@@ -16,7 +16,6 @@ export default defineConfig({
       kind: 'postgres',
       url: '${env:DATABASE_URL}',
       scopes: ['schema:read', 'tables:read', 'query:raw'],
-      perEntityTools: { enabled: false },
       limits: { rowCap: 200, timeoutMs: 10_000, maxBytes: 262144 },
       redact: { columns: ['public.users.password_hash'], patterns: [] },
     },

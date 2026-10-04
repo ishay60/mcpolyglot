@@ -31,7 +31,6 @@ export interface BuiltServer {
   connectors: Connector[];
   /** Present when `cfg.agents` is set. */
   agents?: AgentGrant[];
-  perEntity: Record<string, { enabled: boolean; include?: string[]; exclude?: string[] }>;
 }
 
 export async function buildServerFromConfig(
@@ -39,21 +38,8 @@ export async function buildServerFromConfig(
   logger = makeStderrLogger(),
 ): Promise<BuiltServer> {
   const connectors: Connector[] = [];
-  const perEntity: BuiltServer['perEntity'] = {};
 
-  for (const src of cfg.sources) {
-    connectors.push(await buildConnector(src));
-    if (src.kind !== 'mongo' && src.kind !== 'openapi') {
-      const sql = src as SqlSourceConfig;
-      if (sql.perEntityTools.enabled) {
-        perEntity[sql.id] = {
-          enabled: true,
-          include: sql.perEntityTools.include,
-          exclude: sql.perEntityTools.exclude,
-        };
-      }
-    }
-  }
+  for (const src of cfg.sources) connectors.push(await buildConnector(src));
 
   const agents = cfg.agents ? await buildAgents(cfg, connectors) : undefined;
 
@@ -77,29 +63,24 @@ export async function buildServerFromConfig(
     wrapMode: cfg.security.wrapMode,
   });
 
-  // Use the first source's limits as the default execution envelope (Wave 1 simplification —
-  // per-tool limits arrive in Wave 2).
-  const first = cfg.sources[0];
-  const defaultLimits = first
-    ? {
-        rowCap: getLimits(first).rowCap,
-        timeoutMs: getLimits(first).timeoutMs,
-        maxBytes: getLimits(first).maxBytes,
-      }
-    : { rowCap: 200, timeoutMs: 10_000, maxBytes: 256 * 1024 };
+  // The first source's limits are the default execution envelope for every tool.
+  const defaultLimits = cfg.sources[0]?.limits ?? {
+    rowCap: 200,
+    timeoutMs: 10_000,
+    maxBytes: 256 * 1024,
+  };
 
   const server = new McpolyglotServer({
     name: cfg.server.name,
     version: cfg.server.version,
     connectors,
-    perEntity,
     scopes: collectScopes(cfg.sources),
     security: { hooks, defaultLimits, defaultScopes: collectScopes(cfg.sources) },
     ...(agents ? { agents } : {}),
     logger,
   });
 
-  return { server, hooks, connectors, ...(agents ? { agents } : {}), perEntity };
+  return { server, hooks, connectors, ...(agents ? { agents } : {}) };
 }
 
 /**
@@ -209,10 +190,6 @@ function sqlPolicy(src: SqlSourceConfig) {
 export function agentScopes(agent: AgentConfig, sources: SourceConfig[]): Scope[] {
   const allowed = collectScopes(sources);
   return agent.scopes ? agent.scopes.filter((s) => allowed.includes(s)) : allowed;
-}
-
-function getLimits(src: SourceConfig): { rowCap: number; timeoutMs: number; maxBytes: number } {
-  return src.limits;
 }
 
 function collectScopes(sources: SourceConfig[]) {

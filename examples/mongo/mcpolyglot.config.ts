@@ -10,7 +10,6 @@ export default {
       url: '${env:MONGO_URL}',
       // database: 'app', // optional — defaults to the dbname in the URI
       scopes: ['schema:read', 'tables:read', 'query:raw'],
-      perEntityTools: { enabled: false },
       limits: { rowCap: 200, timeoutMs: 10_000, maxBytes: 262144 },
       redact: {
         columns: ['app.users.passwordHash', 'app.users.apiKey'],

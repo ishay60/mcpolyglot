@@ -12,10 +12,12 @@ describe('wrapUntrusted', () => {
   });
 
   it('serializes json content into a wrapped text block', () => {
-    const out = wrapUntrusted({ content: [{ type: 'json', data: { x: 1 } }] }, 'minimal');
+    const out = wrapUntrusted({ content: [{ type: 'json', data: { x: 1 } }] });
     expect(out.content[0]?.type).toBe('text');
     expect((out.content[0] as { text: string }).text).toContain('"x": 1');
-    expect((out.content[0] as { text: string }).text).toContain('<mcpolyglot-data>');
+    expect((out.content[0] as { text: string }).text).toContain(
+      '<mcpolyglot-data trusted="false">',
+    );
   });
 
   it('does not wrap when mode is off', () => {

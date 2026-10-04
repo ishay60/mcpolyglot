@@ -5,7 +5,6 @@ import type {
   Connector,
   ConnectorInitCtx,
   OperationSchema,
-  PerEntityConfig,
   SchemaSnapshot,
   ToolDefinition,
 } from '@mcpolyglot/core';
@@ -171,10 +170,6 @@ export class OpenApiConnector implements Connector {
         },
       },
     ];
-  }
-
-  generatePerEntityTools(_cfg: PerEntityConfig): ToolDefinition[] {
-    return [];
   }
 
   private buildUrl(op: Operation, path: Json, query: Json): URL {

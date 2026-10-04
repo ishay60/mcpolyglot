@@ -9,7 +9,6 @@ export default {
       kind: 'sqlite',
       url: './data.db',
       scopes: ['schema:read', 'tables:read', 'query:raw'],
-      perEntityTools: { enabled: false },
       limits: { rowCap: 200, timeoutMs: 10_000, maxBytes: 262144 },
       redact: { columns: [], patterns: [] },
     },
