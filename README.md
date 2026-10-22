@@ -118,6 +118,8 @@ Wire it into Claude Desktop (`~/Library/Application Support/Claude/claude_deskto
 
 Restart Claude Desktop and try: _"List the tables in my database, then sample 5 rows from `users`."_
 
+**Agent skill.** [`.agents/skills/mcpolyglot`](./.agents/skills/mcpolyglot) is an [Agent Skills](https://agentskills.io) folder that teaches Claude Code, Codex, Cursor and Gemini CLI to set mcpolyglot up, wire it into the host, and read its policy denials. Codex, Cursor and Gemini CLI pick it up from `.agents/skills/`; for Claude Code, copy or symlink it into `.claude/skills/`. claude.ai chat reaches mcpolyglot as a custom connector over `serve --http` ([recipe](./.agents/skills/mcpolyglot/references/hosts.md#claudeai-chat-streamable-http-custom-connector)).
+
 End-to-end recipes per connector live under [`examples/`](./examples) (Postgres, MySQL, SQLite, MongoDB, OpenAPI, Streamable HTTP, Docker).
 
 ## Policy examples
