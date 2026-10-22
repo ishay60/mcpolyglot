@@ -1,0 +1,22 @@
+# Codex / ChatGPT desktop metadata for the mcpolyglot skill.
+# Optional per the Codex skills docs; other hosts ignore this file.
+interface:
+  display_name: mcpolyglot
+  short_description: Guard-railed MCP access to your databases and APIs
+  brand_color: '#1f6feb'
+  default_prompt: Set up mcpolyglot for my database and show me what the agent can query.
+
+policy:
+  allow_implicit_invocation: true
+
+dependencies:
+  tools:
+    - type: mcp
+      value: mcpolyglot
+      description: >
+        mcpolyglot server over the user's database. Default is the local Streamable HTTP
+        endpoint from `npx @mcpolyglot/cli serve --http`; change `url` for a hosted
+        deployment. For stdio, add the server with `codex mcp add` instead
+        (see references/hosts.md).
+      transport: streamable_http
+      url: http://127.0.0.1:7337/mcp
