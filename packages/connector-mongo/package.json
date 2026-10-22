@@ -29,10 +29,10 @@
   },
   "dependencies": {
     "@mcpolyglot/core": "workspace:^",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "optionalDependencies": {
-    "mongodb": "^7.5.0"
+    "mongodb": "^7.7.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
