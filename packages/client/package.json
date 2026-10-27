@@ -34,7 +34,7 @@
     "@mcpolyglot/connector-sql": "workspace:^",
     "@mcpolyglot/core": "workspace:^",
     "@mcpolyglot/security": "workspace:^",
-    "@types/better-sqlite3": "^7.6.11",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.6.5",
     "better-sqlite3": "^13.0.3",
     "typescript": "^6.0.3",
