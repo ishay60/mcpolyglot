@@ -30,11 +30,11 @@
   "dependencies": {
     "@mcpolyglot/core": "workspace:^",
     "node-sql-parser": "^5.3.4",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "optionalDependencies": {
     "better-sqlite3": "^13.0.3",
-    "mysql2": "^3.24.5",
+    "mysql2": "^3.24.6",
     "pg": "^8.23.1"
   },
   "devDependencies": {
