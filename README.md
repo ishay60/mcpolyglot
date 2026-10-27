@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](#status)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933)](.nvmrc)
-[![mcpolyglot on AI Agents Listing](https://aiagentslisting.com/mcpolyglot/badge.svg?claim=e2705cbae7cabdd30327f93c3e251541)](https://aiagentslisting.com/mcp/mcpolyglot)
+[![mcpolyglot on AI Agents Listing](https://aiagentslisting.com/mcpolyglot/badge.svg?claim=5f2f67f13a893dfe0fff1f2533e30185)](https://aiagentslisting.com/mcp/mcpolyglot)
 
 Giving an AI agent access to a database today means picking one of three bad options: the official `server-postgres` (archived, Postgres-only), a vendor's MCP server (locks you to their hosted DB), or a hand-rolled server where read-only enforcement, secret handling, PII redaction, and audit logging are left as an exercise.
 
