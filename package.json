@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "2.1.9",
     "eslint": "^10",
     "prettier": "^3.9.10",
