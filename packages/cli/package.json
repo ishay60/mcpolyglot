@@ -26,21 +26,21 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@clack/prompts": "^1.8.1",
+    "@clack/prompts": "^1.9.0",
     "@mcpolyglot/config": "workspace:^",
     "@mcpolyglot/connector-mongo": "workspace:^",
     "@mcpolyglot/connector-openapi": "workspace:^",
     "@mcpolyglot/connector-sql": "workspace:^",
     "@mcpolyglot/core": "workspace:^",
     "@mcpolyglot/security": "workspace:^",
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "picocolors": "^1.1.0",
     "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^26.6.5",
-    "better-sqlite3": "^13.0.3",
+    "@types/node": "^26.6.6",
+    "better-sqlite3": "^13.1.1",
     "typescript": "^6.0.3",
     "vitest": "^2.1.1"
   },
